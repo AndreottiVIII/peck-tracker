@@ -1,29 +1,49 @@
-"""Costruisce i dati del sito (docs/dati.json e docs/vini.json) dai file CSV in data/.
+"""Costruisce il sito statico (le pagine in docs/) dai file CSV in data/.
 
 Si lancia dalla cartella peck-tracker, con Python 3.12:
 
     python -I src/sito.py
 
-Si puo' rilanciare quando si vuole (per esempio dopo aver aggiornato data/aziende.csv):
-riscrive i due file json da zero. Non scarica nulla. Nei json finiscono solo
-indirizzi web (URL) delle foto, mai le foto: le foto restano sui server di Peck e di Winerim.
+Si puo' rilanciare quando si vuole (per esempio dopo aver aggiornato data/aziende.csv): cancella
+le pagine generate e le riscrive da zero. Non scarica nulla. Nelle pagine finiscono solo indirizzi
+web (URL) delle foto, mai le foto: le foto restano sui server di Peck e di Winerim.
+
+Ogni pagina ha un indirizzo vero (una cartella con dentro index.html), con link relativi, cosi'
+funziona sia su https://andreottiviii.github.io/peck-tracker/ sia alla radice di un server locale:
+
+    docs/index.html                       home (e' la Dispensa)
+    docs/dispensa/                        elenco dei prodotti, con filtri
+    docs/prodotto/<id>/                   un prodotto alimentare
+    docs/box/            docs/box/<id>/   le pagine dello shop di Peck, "spacchettate"
+    docs/produttori/     docs/produttore/<id>/
+    docs/enoteca/        docs/cantina/<id>/   docs/vino/<id>-<nome>/
+    docs/come-funziona/
+    docs/404.html, docs/sitemap.xml, docs/robots.txt, docs/vini.json (dati per i filtri dell'enoteca)
+
+I file scritti a mano e che questo programma NON tocca: docs/style.css, docs/app.js. Il file
+docs/personale.js (il logo di Peck, solo per il computer del proprietario) e' nel .gitignore e non
+viene mai pubblicato.
 
 Legge:  data/prodotti.csv, elementi.csv, indirizzi.csv, altre_origini.csv, aziende.csv,
-        vini.csv, cantine.csv, vini_nelle_box.csv, data/raw/prodotto_*.html (per le foto),
-        data/raw/winerim/vini_p*.json (per le foto delle bottiglie).
-Scrive: docs/dati.json (dispensa, box, produttori) e docs/vini.json (enoteca).
+        vini.csv (compresi gli attributi di degustazione), cantine.csv, vini_nelle_box.csv,
+        link_controllati.csv (se c'e': i bottoni dei link rotti non si mostrano),
+        data/raw/prodotto_*.html (per le foto) e data/raw/winerim/vini_p*.json (per le foto delle bottiglie).
 """
 
 import csv
 import difflib
 import glob
+import html
 import json
+import math
 import re
+import shutil
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from bs4 import BeautifulSoup
 
@@ -33,10 +53,13 @@ RAW = DATI / "raw"
 DOCS = RADICE / "docs"
 
 REPO = "https://github.com/AndreottiVIII/peck-tracker"
+URL_SITO = "https://andreottiviii.github.io/peck-tracker/"
+PREFISSO_SITO = "/peck-tracker/"   # solo per la pagina 404, che GitHub serve da qualsiasi percorso
 FOTO_PECK_HOST = "https://shop.peck.it/"
 FOTO_WINERIM_PREFISSO = "https://app.winerim.com/images/wines/"
 LINK_WINERIM_PREFISSO = "https://web.winerim.com/enotecapeck/wines/"
 DATA_FOTOGRAFIA = "2026-10-24"
+AVVISO = "Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita."
 
 # ---------------------------------------------------------------------------
 # Categorie del cibo: parole chiave cercate nel nome del prodotto (in minuscolo).
@@ -631,9 +654,62 @@ def costruisci_cibo():
     return dispensa, box_out, produttori, stat
 
 
+
+# ---------------------------------------------------------------------------
+# Link controllati (data/link_controllati.csv, scritto da src/controlla_link.py)
+# ---------------------------------------------------------------------------
+
+class Link:
+    """Dice se un link si puo' mostrare. Un link marcato 'rotto' o 'dominio_parcheggiato' non
+    diventa mai un bottone. Se il file non c'e' si mostrano tutti."""
+
+    def __init__(self):
+        self.esiti = {}
+        self.data = ""
+        self.conteggi = Counter()
+        f = DATI / "link_controllati.csv"
+        if f.exists():
+            self.data = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d")
+            for r in leggi_csv("link_controllati"):
+                self.esiti[r["url"]] = r["esito"]
+                self.conteggi[(r["campo"], r["esito"])] += 1
+
+    def buono(self, url):
+        return bool(url) and self.esiti.get(url, "ok") not in ("rotto", "dominio_parcheggiato")
+
+
+LINK = Link()
+
+
 # ---------------------------------------------------------------------------
 # Enoteca
 # ---------------------------------------------------------------------------
+
+ATTRIBUTI_VINO = [  # (colonna in vini.csv, nome mostrato)
+    ("intensita", "Intensità"), ("freschezza", "Freschezza"), ("dolcezza", "Dolcezza"),
+    ("tannicita", "Tannicità"), ("fruttato", "Fruttato"), ("affinamento", "Affinamento"),
+]
+
+
+def termini_vino(cantina, nome):
+    """Le parole con cui cercare il vino su Vivino e Wine-Searcher: cantina + nome, senza
+    ripetere la cantina se il nome la contiene gia'."""
+    if nz(cantina) and nz(cantina) in nz(nome):
+        return nome.strip()
+    return f"{cantina} {nome}".strip()
+
+
+def url_vivino(termini):
+    return "https://www.vivino.com/search/wines?q=" + quote(termini, safe="!'()*")
+
+
+def url_wine_searcher(termini, annata):
+    parole = re.findall(r"[a-z0-9]+", senza_accenti(termini).lower())
+    u = "https://www.wine-searcher.com/find/" + "+".join(parole)
+    if re.fullmatch(r"(19|20)\d\d", annata or ""):
+        u += "/" + annata
+    return u
+
 
 def costruisci_vini(box_per_nome):
     righe = leggi_csv("vini")
@@ -660,6 +736,12 @@ def costruisci_vini(box_per_nome):
     tipi = ["rosso", "bianco", "spumante", "rosato", "dolce", "liquoroso/fortificato"]
     tipi += sorted({r["tipo"] for r in righe} - set(tipi))
 
+    def intero(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return None
+
     vini = {}
     for r in righe:
         w = vini.get(r["id"])
@@ -674,6 +756,22 @@ def costruisci_vini(box_per_nome):
             link_atteso = f"{LINK_WINERIM_PREFISSO}{r['id']}/{w['s']}"
             if r["link"] != link_atteso:
                 w["l"] = r["link"]
+            sl = slug(r["nome"])
+            if len(sl) > 50:                                              # taglia a fine parola
+                sl = sl[:50].rsplit("-", 1)[0] if "-" in sl[:50] else sl[:50]
+            w["d"] = f"{r['id']}-{sl}"                                    # cartella della pagina
+            w["tt"] = termini_vino(r["cantina"], r["nome"])               # parole per Vivino / Wine-Searcher
+            # profilo di degustazione (0-5): [(nome, valore)] solo per quelli indicati
+            prof = [(nome, intero(r.get(col))) for col, nome in ATTRIBUTI_VINO]
+            prof = [(n, v) for n, v in prof if v is not None]
+            w["at"] = prof
+            extra = {}
+            for col in ("gradazione", "temperatura_servizio", "bere_da", "bere_fino_a", "picco_da", "picco_a"):
+                if r.get(col):
+                    extra[col] = r[col]
+            if r.get("abbinamenti"):
+                extra["abbinamenti"] = [x.strip() for x in r["abbinamenti"].split(";") if x.strip()]
+            w["ex"] = extra
         try:
             prezzo = float(r["prezzo_euro"]) if r["prezzo_euro"] != "" else None
         except ValueError:
@@ -718,7 +816,7 @@ def costruisci_vini(box_per_nome):
             "nome": n, "paese": "", "regioni": "", "n": 0, "tipi": {}, "pmin": None, "pmax": None,
             "nota": "", "box": []})
     usati = set()
-    for c in cantine_ordinate:  # id leggibile e unico per l'indirizzo #/cantina/<id>
+    for c in cantine_ordinate:  # id leggibile e unico: e' la cartella docs/cantina/<id>/
         base, i = slug(c["nome"]), 1
         cid = base
         while cid in usati:
@@ -734,44 +832,1068 @@ def costruisci_vini(box_per_nome):
         "prefisso_foto": FOTO_WINERIM_PREFISSO, "prefisso_link": LINK_WINERIM_PREFISSO,
         "data": DATA_FOTOGRAFIA,
     }
+    for w in lista:
+        w["cantina"] = cantine_ordinate[w["c"]]
+        w["paese"] = paesi[w["p"]]
+        w["tipo"] = tipi[w["t"]]
+    for c in cantine_ordinate:
+        c["vini"] = []
+    for w in lista:
+        w["cantina"]["vini"].append(w)
     out = {"meta": meta, "cantine": cantine_ordinate, "vini": lista}
     return out, {"mancanti": mancanti, "senza_foto": sum(1 for w in lista if not w["ph"]),
-                 "link_diversi": sum(1 for w in lista if "l" in w)}
+                 "link_diversi": sum(1 for w in lista if "l" in w),
+                 "con_profilo": sum(1 for w in lista if w["at"]),
+                 "con_dettagli": sum(1 for w in lista if w["ex"])}
+
+
+def json_vini(vini):
+    """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l")
+    return {
+        "meta": vini["meta"],
+        "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
+        "vini": [{k: w[k] for k in chiavi if k in w} for w in vini["vini"]],
+    }
 
 
 # ---------------------------------------------------------------------------
+# Pezzi di HTML in comune
+# ---------------------------------------------------------------------------
 
-def scrivi(nome, dati):
+STATI_TESTO = {"certa": "certa", "probabile": "probabile", "non trovata": "non trovata",
+               "peck": "Peck stessa", "nessuna": "nessuna indicazione"}
+TIPI_CHIAVE = {"indirizzo": "Indirizzo", "bollo_ce": "Bollo CE", "produttore": "Produttore nominato"}
+MENU = [("dispensa", "Dispensa", "dispensa/"), ("box", "Box regalo", "box/"),
+        ("produttori", "Produttori", "produttori/"), ("enoteca", "Enoteca", "enoteca/"),
+        ("come-funziona", "Come funziona", "come-funziona/")]
+GIALLO_PECK = "#FFCD45"    # --giallo-peck nel CSS di peck.it
+MARRONE_PECK = "#5E4824"   # --marrone-peck nel CSS di peck.it
+
+FONT = ("https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900"
+        "&family=Playfair+Display:ital,wght@1,400;1,500&display=swap")
+FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect "
+           "width='32' height='32' fill='%23ffcd45'/%3E%3Ccircle cx='15' cy='15' r='7' fill='none' "
+           "stroke='%235e4824' stroke-width='3'/%3E%3Cpath d='M20 20l6 6' stroke='%235e4824' "
+           "stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E")
+
+# Vecchi indirizzi del sito (con #/): rimandano alle pagine nuove
+REDIRECT_VECCHI = (
+    "(function(){var h=location.hash;if(h.indexOf('#/')!==0)return;var p=h.slice(2).split('?'),"
+    "a=p[0].split('/').filter(Boolean),q=p[1]?'?'+p[1]:'',m={dispensa:'dispensa/',box:'box/',"
+    "produttori:'produttori/',enoteca:'enoteca/','come-funziona':'come-funziona/'},t='';"
+    "if(a[1]&&{prodotto:1,box:1,produttore:1,cantina:1}[a[0]])t=a[0]+'/'+a[1]+'/';"
+    "else if(m[a[0]])t=m[a[0]]+q;if(t)location.replace(t)})();"
+)
+CARICA_PERSONALE = (
+    "(function(){var h=location.hostname;if(h==='localhost'||h==='127.0.0.1'){"
+    "var s=document.createElement('script');s.src='%sSCRIPT';document.head.appendChild(s)}})();"
+)
+
+
+def H(s):
+    return html.escape("" if s is None else str(s), quote=True)
+
+
+def cap(s):
+    return s[:1].upper() + s[1:] if s else s
+
+
+def num(n):
+    return f"{n:,}".replace(",", ".")
+
+
+def euro_it(x):
+    """80 -> '80 €',  12.5 -> '12,50 €',  1250 -> '1.250 €' (stesso formato di app.js)."""
+    if x is None:
+        return ""
+    if float(x).is_integer():
+        t = f"{int(x):,}".replace(",", ".")
+    else:
+        t = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return t + " €"
+
+
+def data_lunga(iso):
+    mesi = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
+            "settembre", "ottobre", "novembre", "dicembre"]
+    d = date.fromisoformat(iso)
+    return f"{d.day} {mesi[d.month - 1]} {d.year}"
+
+
+def luogo(comune, prov):
+    return f"{comune} ({prov})" if comune and prov else (comune or "")
+
+
+def sr_nuova_scheda():
+    return '<span class="sr"> (si apre in una nuova scheda)</span>'
+
+
+def ext(url, testo, classe=""):
+    """Link verso un altro sito. Se il link e' marcato rotto in link_controllati.csv non si mostra."""
+    if not url or not url.startswith(("http://", "https://")) or not LINK.buono(url):
+        return ""
+    c = f' class="{classe}"' if classe else ""
+    return (f'<a{c} href="{H(url)}" target="_blank" rel="noopener noreferrer">{H(testo)}'
+            f'{sr_nuova_scheda()}</a>')
+
+
+def badge(stato):
+    k = stato.replace(" ", "-")
+    return (f'<span class="badge b-{k}" title="Quanto siamo sicuri di chi fa il prodotto">'
+            f'{H(STATI_TESTO.get(stato, stato))}</span>')
+
+
+SEGNAPOSTO = {
+    "cibo": '<div class="segnaposto cibo" role="img" aria-label="Foto non disponibile"></div>',
+    "vino": '<div class="segnaposto vino" role="img" aria-label="Foto non disponibile"></div>',
+}
+
+
+def foto_html(url, alt, tipo="cibo", etichetta=""):
+    classe = "foto bottiglia" if tipo == "vino" else "foto"
+    if not url:
+        return f'<div class="{classe}">{SEGNAPOSTO[tipo]}</div>'
+    img = (f'<img src="{H(url)}" alt="{H(alt)}" loading="lazy" decoding="async" '
+           f'referrerpolicy="no-referrer" data-ph="{tipo}">')
+    et = f'<span class="etic-foto">{H(etichetta)}</span>' if etichetta else ""
+    return f'<div class="{classe}">{img}{et}</div>'
+
+
+def pulsante(url, testo, classe="bottone secondario piccolo"):
+    return ext(url, testo, classe)
+
+
+# ---------------------------------------------------------------------------
+# Pagina intera
+# ---------------------------------------------------------------------------
+
+PAGINE = []   # (percorso della cartella, ultima modifica) per la sitemap
+CONTA = Counter()
+
+
+def scrivi_pagina(rel, contenuto, tipo):
+    """rel = 'prodotto/panettone' -> docs/prodotto/panettone/index.html ; '' -> docs/index.html"""
+    p = DOCS / rel / "index.html" if rel else DOCS / "index.html"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(contenuto, encoding="utf-8")
+    PAGINE.append(rel)
+    CONTA[tipo] += 1
+
+
+def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
+    prof = rel.count("/") + 1 if rel else 0
+    r = PREFISSO_SITO if assoluto else ("../" * prof if prof else "./")
+    titolo_pagina = ("Peck Tracker – chi fa davvero quello che vende Peck" if home
+                     else f"{titolo} – Peck Tracker")
+    canon = URL_SITO + (rel + "/" if rel else "")
+    menu = "".join(
+        f'<a href="{r}{href}"' + (' aria-current="page"' if k == sezione else "") + f">{H(t)}</a>"
+        for k, t, href in MENU)
+    redirect = f"<script>{REDIRECT_VECCHI}</script>\n" if home else ""
+    carica = CARICA_PERSONALE.replace("%s", r).replace("SCRIPT", "personale.js")
+    return f"""<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{H(titolo_pagina)}</title>
+<meta name="description" content="{H(descr)}">
+<meta name="theme-color" content="{GIALLO_PECK}">
+<link rel="canonical" href="{H(canon)}">
+<link rel="icon" href="{FAVICON}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{FONT}">
+<link rel="stylesheet" href="{r}style.css">
+</head>
+<body data-radice="{r}">
+<a class="salta" href="#principale">Vai al contenuto</a>
+
+<p class="avviso" role="note">{H(AVVISO)}</p>
+
+<header class="testata">
+  <div class="contenitore">
+    <div class="marchio" id="marchio">
+      <div class="marchio-testo">
+        <p class="logo"><a href="{r}">Peck Tracker</a></p>
+        <p class="sotto-logo">Chi fa davvero quello che vende Peck, e dove</p>
+      </div>
+    </div>
+    <nav aria-label="Sezioni del sito" class="menu">{menu}</nav>
+  </div>
+</header>
+
+<main id="principale" tabindex="-1" class="contenitore">
+{corpo}
+</main>
+
+<footer class="piede">
+  <div class="contenitore">
+    <p class="avviso-fondo">{H(AVVISO)}</p>
+    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (shop.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
+    <p><a href="{r}come-funziona/">Come funziona</a> · <a href="{REPO}" target="_blank" rel="noopener noreferrer">Dati e codice su GitHub{sr_nuova_scheda()}</a> · Fotografia dei dati: {data_lunga(DATA_FOTOGRAFIA)}</p>
+  </div>
+</footer>
+<script>{carica}</script>
+{redirect}<script src="{r}app.js" defer></script>
+</body>
+</html>
+"""
+
+
+def briciole(r, *voci):
+    """voci: (testo, href o None). L'ultima e' la pagina corrente."""
+    pezzi = []
+    for i, (t, href) in enumerate(voci):
+        if href is not None:
+            pezzi.append(f'<a href="{r}{href}">{H(t)}</a>')
+        else:
+            pezzi.append(f'<span aria-current="page">{H(t)}</span>')
+    return f'<nav class="briciole" aria-label="Dove sei">{" <span aria-hidden=\"true\">›</span> ".join(pezzi)}</nav>'
+
+
+# ---------------------------------------------------------------------------
+# Filtri e liste (il filtraggio lo fa app.js, lo stato sta nell'indirizzo: ?q=...&cat=...)
+# ---------------------------------------------------------------------------
+
+def ctl_cerca(etichetta, segnaposto):
+    return (f'<div class="campo cerca"><label for="f-q">{H(etichetta)}</label>'
+            f'<input type="search" id="f-q" name="q" data-modo="cerca" placeholder="{H(segnaposto)}" '
+            f'autocomplete="off"></div>')
+
+
+def ctl_select(nome, etichetta, opzioni, attr="", modo="eq", vuoto="Tutti", dip=""):
+    """opzioni: [(valore, testo)] oppure [(valore, testo, valore_regione)]."""
+    ops = ""
+    for o in opzioni:
+        v, t = o[0], o[1]
+        x = f' data-reg="{H(o[2])}"' if len(o) > 2 and o[2] else ""
+        ops += f'<option value="{H(v)}"{x}>{H(t)}</option>'
+    a = f' data-attr="{attr}"' if attr else ""
+    d = f' data-dip="{dip}"' if dip else ""
+    return (f'<div class="campo"><label for="f-{nome}">{H(etichetta)}</label>'
+            f'<select id="f-{nome}" name="{nome}" data-modo="{modo}"{a}{d}>'
+            f'<option value="">{H(vuoto)}</option>{ops}</select></div>')
+
+
+def ctl_spunta(nome, etichetta, attr):
+    return (f'<div class="campo spunta"><input type="checkbox" id="f-{nome}" name="{nome}" value="1" '
+            f'data-modo="flag" data-attr="{attr}"><label for="f-{nome}">{H(etichetta)}</label></div>')
+
+
+def form_filtri(aria, cerca, campi):
+    return f"""<form class="filtri" role="search" aria-label="{H(aria)}" onsubmit="return false">
+{cerca}
+<button type="button" class="apri-filtri" aria-expanded="false" aria-controls="altri-filtri">Filtri</button>
+<div class="altri-filtri" id="altri-filtri">
+<div class="riga">{campi}</div>
+<button type="button" class="azzera">Azzera i filtri</button>
+</div>
+</form>"""
+
+
+def barra_lista(conteggio):
+    return f"""<div class="barra-lista">
+<p class="conteggio" id="conteggio" role="status" aria-live="polite">{H(conteggio)}</p>
+<div class="vista-scelta" role="group" aria-label="Come vuoi vedere l’elenco">
+<a href="?" data-vista="schede" aria-current="true">Schede</a>
+<a href="?vista=elenco" data-vista="elenco">Elenco</a>
+</div>
+</div>"""
+
+
+def lista_html(intestazioni, voci, singolare, plurale, extra_attr="", foto=True):
+    ints = "".join(f"<span>{H(t)}</span>" for t in intestazioni)
+    vuota = "<span></span>" if foto else ""
+    classe_int = "intestazione-elenco" + ("" if foto else " senza-foto")
+    return f"""<div class="lista" id="lista" data-lista data-singolare="{singolare}" data-plurale="{plurale}"{extra_attr}>
+<div class="{classe_int}" aria-hidden="true">{vuota}{ints}</div>
+<ul class="griglia">
+{voci}
+</ul>
+<p class="vuoto" hidden>Nessun risultato. Prova a togliere qualche filtro.</p>
+</div>"""
+
+
+def conta_testo(n, sing, plur):
+    return f"{num(n)} {sing if n == 1 else plur}"
+
+
+# ---------------------------------------------------------------------------
+# Dispensa
+# ---------------------------------------------------------------------------
+
+def chi_fa(it, az):
+    """(testo 'chi', 'dove', stato) per le schede."""
+    o = it.get("best")
+    if not o:
+        return "Nessuna indicazione di dove è fatto", "", "nessuna"
+    z = az.get(o["azienda"])
+    sede = luogo(o["comune"] or o.get("comune_azienda") or (z and z["comune"]) or "",
+                 o["provincia"] or (z and z["provincia"]) or "")
+    altre = f" e altre {len(it['aziende']) - 1}" if len(it["aziende"]) > 1 else ""
+    if o["stato"] == "peck":
+        return "Peck stessa, in via Spadari 9", "Milano (MI)", "peck"
+    if o["stato"] == "nessuna":
+        return "Nessuna indicazione di dove è fatto", "", "nessuna"
+    if z and z["trovata"]:
+        return f"Fatto da <strong>{H(z['nome'])}</strong>{H(altre)}", sede, o["stato"]
+    dove = sede or (("codice " + o["bollo"]) if o["bollo"] else (o["nominato"] or "luogo non chiaro"))
+    return f"<strong>Azienda non trovata</strong>{H(altre)}", dove, o["stato"]
+
+
+def prepara_cibo(dispensa, box, produttori):
+    az = {z["id"]: z for z in produttori}
+    # il "peck" non ha prodotti se nessuno ha sede_peck: in quel caso non c'e' in lista
+    items = {d["id"]: d for d in dispensa}
+    boxes = {b["id"]: b for b in box}
+    ordine = ["certa", "probabile", "peck", "non trovata", "nessuna"]
+    for it in dispensa:
+        it["best"] = sorted(it["origini"], key=lambda o: ordine.index(o["stato"]))[0] if it["origini"] else None
+        it["aziende"] = list(dict.fromkeys(o["azienda"] for o in it["origini"] if o["azienda"]))
+        pezzi = [it["nome"], it["nome_originale"], it["categoria"], *it["regioni"]]
+        for o in it["origini"]:
+            z = az.get(o["azienda"])
+            pezzi += [o["comune"], o["provincia"], o["bollo"], o["nominato"], o["frase"]]
+            if z:
+                pezzi += [z["nome"], z["marchio"], z["comune"]]
+        it["k"] = senza_accenti(" ".join(p for p in pezzi if p)).lower()
+    for z in produttori:
+        z["shop"] = z["shop_online"] == "si" or LINK.buono(z["link_shop"])
+        z["k"] = senza_accenti(" ".join(p for p in [z["nome"], z["ragione"], z["marchio"], z["comune"],
+                                                   z["provincia"], z["regione"],
+                                                   *[c["chiave"] for c in z["chiavi"]]] if p)).lower()
+    for it in dispensa:
+        it["shop"] = any(az[a]["shop"] for a in it["aziende"] if a in az)
+    for b in box:
+        b["k"] = senza_accenti(" ".join([b["nome"]] + [items[i]["nome"] + " " + items[i]["categoria"]
+                                                       for i in b["elementi"]])).lower()
+    return az, items, boxes
+
+
+def voce_prodotto(it, az, r):
+    chi, dove, stato = chi_fa(it, az)
+    et = "Foto della box" if it["foto_tipo"] == "box" else ""
+    regioni = "|" + "|".join(it["regioni"]) + "|"
+    province = "|" + "|".join(sorted({o["provincia"] for o in it["origini"] if o["provincia"]})) + "|"
+    dove_html = f'<span class="col-c">{H(dove)}</span>' if dove else '<span class="col-c"></span>'
+    return (f'<li class="it" data-k="{H(it["k"])}" data-c="{H(it["categoria"])}" data-g="{H(regioni)}" '
+            f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}">'
+            f'<a class="scheda" href="{r}prodotto/{it["id"]}/">'
+            f'{foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck", etichetta=et)}'
+            f'<div class="corpo"><div class="col-a"><span class="cat">{H(cap(it["categoria"]))}</span>'
+            f'<p class="nome">{H(it["nome"])}</p></div>'
+            f'<p class="meta"><span class="col-b">{chi}</span>{dove_html}</p>'
+            f'<div class="col-d">{badge(stato)}</div></div></a></li>')
+
+
+def pagina_dispensa(dispensa, az, r_rel, home=False):
+    r = "./" if home else "../"
+    voci = "\n".join(voce_prodotto(it, az, r) for it in dispensa)
+    regioni = sorted({g for it in dispensa for g in it["regioni"]}, key=lambda s: s.lower())
+    prov = sorted({(o["provincia"], o["regione"]) for it in dispensa for o in it["origini"]
+                   if o["provincia"] and o["regione"]})
+    cats = [c for c in ORDINE_CATEGORIE if any(it["categoria"] == c for it in dispensa)]
+    campi = (
+        ctl_select("cat", "Categoria", [(c, cap(c)) for c in cats], "c") +
+        ctl_select("reg", "Regione o paese", [(g, g) for g in regioni], "g", "multi") +
+        ctl_select("prov", "Provincia", [(p, p, g) for p, g in prov], "p", "multi", "Tutte", dip="reg") +
+        ctl_select("cert", "Quanto siamo sicuri", [(s, cap(STATI_TESTO[s])) for s in
+                                                    ("certa", "probabile", "peck", "non trovata", "nessuna")], "s") +
+        ctl_spunta("shop", "Il produttore ha uno shop online", "n"))
+    corpo = f"""<section>
+<h1 class="titolo-pagina">Dispensa</h1>
+<p class="intro">Ogni prodotto alimentare che Peck vende online, una volta sola anche se sta in più box. Per ognuno: chi lo fa e dove, e quanto siamo sicuri.</p>
+{form_filtri("Filtri: dispensa", ctl_cerca("Cerca un prodotto, un’azienda o un paese", "per esempio: panettone, Pordenone, tartufo"), campi)}
+{barra_lista(conta_testo(len(dispensa), "prodotto", "prodotti"))}
+{lista_html(["Prodotto", "Chi lo fa", "Dove", "Quanto siamo sicuri"], voci, "prodotto", "prodotti")}
+</section>"""
+    return corpo
+
+
+def azienda_riquadro_link(z):
+    sito = pulsante(z["sito"], "Sito ufficiale")
+    shop = pulsante(z["link_shop"], "Compra dal produttore", "bottone piccolo")
+    return "".join(x for x in (sito, shop) if x)
+
+
+def testo_shop(z):
+    if LINK.buono(z["link_shop"]):
+        return "Ha uno shop online (vedi il bottone)."
+    if z["shop_online"] == "si":
+        return "Ha uno shop online."
+    if z["shop_online"] == "no":
+        return "Sul suo sito non abbiamo trovato un negozio online (non è una prova che non esista)."
+    return "Non abbiamo verificato se ha un negozio online."
+
+
+def fonte_buona(fonti):
+    return next((f for f in fonti if LINK.buono(f)), "")
+
+
+def scheda_box_corta(b, r):
+    return (f'<a class="scheda" href="{r}box/{b["id"]}/">'
+            f'{foto_html(b["foto"], "Foto di " + b["nome"] + " dal sito Peck")}'
+            f'<div class="corpo"><span class="cat">{"Box regalo" if b["tipo"] == "box" else "Prodotto singolo"}</span>'
+            f'<p class="nome">{H(b["nome"])}</p>'
+            f'<p class="meta"><span class="prezzo">{H(b["prezzo_testo"])}</span><br>'
+            f'{b["n_elementi"]} {"prodotto" if b["n_elementi"] == 1 else "prodotti"}</p></div></a>')
+
+
+def pagina_prodotto(it, az, boxes, r):
+    blocchi = []
+    for o in it["origini"]:
+        z = az.get(o["azienda"])
+        dl = ""
+
+        def riga(k, v):
+            nonlocal dl
+            if v:
+                dl += f"<dt>{H(k)}</dt><dd>{H(v)}</dd>"
+        indirizzo = ", ".join(x for x in (o["indirizzo"], o["cap"], luogo(o["comune"], o["provincia"])) if x)
+        if not indirizzo and o.get("comune_azienda"):
+            indirizzo = (f"{o['comune_azienda']}" + (f" ({o['provincia']})" if o["provincia"] else "")
+                         + " (luogo preso dall’azienda)")
+        riga("Indirizzo", indirizzo)
+        riga("Regione o paese", o["regione"] or o["paese"])
+        riga("Bollo sanitario / codice", o["bollo"])
+        riga("Produttore nominato da Peck", o["nominato"])
+        etichetta = ("Come lo scrive Peck" + (f" ({o['ruolo']})" if o["ruolo"] else "")) if o["frase"] else "Origine"
+        frase = (f'<blockquote class="frase">«{H(o["frase"])}»</blockquote>' if o["frase"]
+                 else "<p>Nella scheda del prodotto Peck non scrive dove è fatto.</p>")
+        nota = ""
+        if o["nota"] and not re.search(r"nessuna frase|stessa origine", o["nota"]):
+            nota = f'<p class="meta">Nota: {H(o["nota"])}</p>'
+        riq = ""
+        if z:
+            titolo = (f'<a href="{r}produttore/{z["id"]}/">{H(z["nome"])}</a>'
+                      if (z["trovata"] or z["id"] == "peck") else "Azienda non trovata")
+            fonte = fonte_buona(z["fonti"])
+            riq = (f'<div class="azienda-riquadro"><p class="etichetta">{"Chi lo fa" if o["stato"] == "peck" else "Chi c’è dietro"}</p>'
+                   f'<h3>{titolo}</h3><p>{badge(o["stato"])}</p>'
+                   + (f'<p class="meta">Marchio: {H(z["marchio"])}</p>' if z["marchio"] and z["trovata"] and z["id"] != "peck" else "")
+                   + (f'<p class="meta">{H(testo_shop(z))}</p>' if z["id"] != "peck" else "")
+                   + f'<div class="gruppo-bottoni">{azienda_riquadro_link(z)}</div>'
+                   + (f'<p class="meta">Fonte: {ext(fonte, "dove l’abbiamo trovato")}</p>' if fonte else "")
+                   + ("<details><summary>Note della ricerca</summary>" + "".join(f"<p>{H(n)}</p>" for n in z["note"]) + "</details>"
+                      if z["note"] else "")
+                   + "</div>")
+        blocchi.append(f'<div class="origine"><p class="etichetta">{H(etichetta)}</p>{frase}'
+                       + (f'<dl class="dati">{dl}</dl>' if dl else "") + nota + riq + "</div>")
+    in_box = [boxes[b] for b in it["box"] if b in boxes]
+    nota_foto = (f'<p class="meta">Peck non mostra una foto di questo prodotto da solo: quella a fianco è della box «{H(it["foto_da"])}».</p>'
+                 if it["foto_tipo"] == "box" else "")
+    piu = ('<span class="meta"> Peck indica più di un luogo: sono tutti qui sotto.</span>' if len(it["origini"]) > 1 else "")
+    chi, dove, stato = chi_fa(it, az)
+    corpo = f"""{briciole(r, ("Dispensa", "dispensa/"), (it["nome"], None))}
+<article>
+<div class="dettaglio">
+{foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck", etichetta="Foto della box" if it["foto_tipo"] == "box" else "")}
+<div>
+<p class="etichetta">{H(cap(it["categoria"]))}</p>
+<h1>{H(it["nome"])}</h1>
+<p class="originale">Nome su Peck: {H(it["nome_originale"])}</p>
+{nota_foto}
+<p>{badge(it["stato"])} {piu}</p>
+</div>
+</div>
+<section class="sezione"><h2>Chi lo fa e dove</h2>
+{"".join(blocchi) if blocchi else "<p>Nessuna indicazione.</p>"}
+</section>
+<section class="sezione"><h2>{"Dove lo trovi su Peck" if len(in_box) == 1 else f"Lo trovi in {len(in_box)} pagine di Peck"}</h2>
+<ul class="griglia">{"".join(f"<li>{scheda_box_corta(b, r)}</li>" for b in in_box)}</ul>
+<p class="meta" style="margin-top:1rem">Le pagine qui sopra sono le nostre; da ognuna puoi andare alla pagina originale di Peck.</p>
+</section>
+</article>"""
+    sede = f" {dove}." if dove else ""
+    descr = re.sub(r"<[^>]+>", "", f"{it['nome']}: {chi}.{sede} {AVVISO}")
+    return corpo, descr
+
+
+# ---------------------------------------------------------------------------
+# Box regalo
+# ---------------------------------------------------------------------------
+
+def pagina_box_lista(box, items):
+    ord_nome = {b["id"]: i for i, b in enumerate(sorted(box, key=lambda b: nz(b["nome"])))}
+    voci = []
+    for b in box:
+        tipo = "Box regalo" if b["tipo"] == "box" else "Prodotto singolo"
+        voci.append(
+            f'<li class="it" data-k="{H(b["k"])}" data-t="{H(b["tipo"])}" data-o-nome="{ord_nome[b["id"]]}" '
+            f'data-o-prezzo="{b["prezzo"] if b["prezzo"] is not None else 0}" data-o-n="{b["n_elementi"]}">'
+            f'<a class="scheda" href="../box/{b["id"]}/">{foto_html(b["foto"], "Foto di " + b["nome"] + " dal sito Peck")}'
+            f'<div class="corpo"><div class="col-a"><span class="cat">{tipo}</span><p class="nome">{H(b["nome"])}</p></div>'
+            f'<p class="meta"><span class="col-b">{b["n_elementi"]} {"prodotto" if b["n_elementi"] == 1 else "prodotti"}</span>'
+            f'<span class="col-c prezzo">{H(b["prezzo_testo"])}</span></p>'
+            f'<div class="col-d"><span class="meta">{tipo}</span></div></div></a></li>')
+    campi = (ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
+                                          ("n", "Più prodotti")], modo="ord", vuoto="Nome") +
+             ctl_select("tipo", "Tipo", [("box", "Box regalo"), ("singolo", "Prodotto singolo")], "t"))
+    return f"""<section>
+<h1 class="titolo-pagina">Box regalo</h1>
+<p class="intro">Le {len(box)} pagine dello shop di Peck: box regalo e qualche prodotto singolo (panettoni, pandoro, salmone). Aprine una per vederla “spacchettata”: ogni prodotto con chi lo fa.</p>
+{form_filtri("Filtri: box regalo", ctl_cerca("Cerca una box", "per esempio: Krug, tartufo, caffè"), campi)}
+{barra_lista(conta_testo(len(box), "pagina", "pagine"))}
+{lista_html(["Box", "Quanti prodotti", "Prezzo", "Tipo"], chr(10).join(voci), "pagina", "pagine")}
+</section>"""
+
+
+def pagina_box(b, items, az, r):
+    its = [items[i] for i in b["elementi"] if i in items]
+    con_azienda = sum(1 for i in its if i["stato"] in ("certa", "probabile"))
+    righe = []
+    for it in its:
+        chi, dove, stato = chi_fa(it, az)
+        righe.append(f'<li><a class="riga-el" href="{r}prodotto/{it["id"]}/">'
+                     f'<span><span class="cat">{H(cap(it["categoria"]))}</span><br><span class="nome">{H(it["nome"])}</span></span>'
+                     f'<span class="meta">{chi}{(" · " + H(dove)) if dove else ""}</span>{badge(stato)}</a></li>')
+    tipo = "Box regalo" if b["tipo"] == "box" else "Prodotto singolo"
+    corpo = f"""{briciole(r, ("Box regalo", "box/"), (b["nome"], None))}
+<article>
+<div class="dettaglio">
+{foto_html(b["foto"], "Foto di " + b["nome"] + " dal sito Peck")}
+<div>
+<p class="etichetta">{tipo}</p>
+<h1>{H(b["nome"])}</h1>
+<p><span class="prezzo">{H(b["prezzo_testo"])}</span><span class="meta"> · prezzo scritto da Peck, il giorno della fotografia dei dati</span></p>
+<p>{len(its)} {"prodotto" if len(its) == 1 else "prodotti"}; per {con_azienda} abbiamo trovato l’azienda (certa o probabile).</p>
+<div class="gruppo-bottoni">{ext(b["url"], "Vedi la pagina su Peck", "bottone secondario piccolo")}</div>
+<p class="meta">Su questo sito non si compra niente: il link porta alla pagina originale di Peck.</p>
+</div>
+</div>
+<section class="sezione"><h2>La box spacchettata</h2>
+<ul class="righe">{"".join(righe)}</ul>
+</section>
+</article>"""
+    descr = f"{b['nome']} ({b['prezzo_testo']}): i {len(its)} prodotti della pagina Peck con chi li fa e dove. {AVVISO}"
+    return corpo, descr
+
+
+# ---------------------------------------------------------------------------
+# Produttori
+# ---------------------------------------------------------------------------
+
+def pagina_produttori_lista(produttori):
+    voci = []
+    for z in produttori:
+        dove = luogo(z["comune"], z["provincia"]) or z["paese"] or "sede non indicata"
+        reg = f" · {z['regione']}" if z["regione"] and z["regione"] != z["paese"] else ""
+        marchio = f"Marchio: {z['marchio']}" if z["marchio"] and z["trovata"] else ""
+        n = len(z["prodotti"])
+        shop = ' <span class="badge b-shop">shop online</span>' if z["shop"] else ""
+        voci.append(
+            f'<li class="it" data-k="{H(z["k"])}" data-s="{H(z["certezza"])}" data-g="|{H(z["regione"])}|" '
+            f'data-n="{1 if z["shop"] else 0}">'
+            f'<a class="scheda azienda" href="../produttore/{z["id"]}/"><div class="corpo">'
+            f'<div class="col-a"><p class="nome">{H(z["nome"] if z["trovata"] else "Azienda non trovata")}</p>'
+            f'<p class="meta">{H(marchio)}</p></div>'
+            f'<p class="meta"><span class="col-b">Per Peck: {n} {"prodotto" if n == 1 else "prodotti"}</span>'
+            f'<span class="col-c">{H(dove)}{H(reg)}</span></p>'
+            f'<div class="col-d">{badge(z["certezza"])}{shop}</div></div></a></li>')
+    regioni = sorted({z["regione"] for z in produttori if z["regione"]}, key=str.lower)
+    campi = (ctl_select("cert", "Quanto siamo sicuri", [(s, cap(STATI_TESTO[s])) for s in
+                                                        ("certa", "probabile", "peck", "non trovata")], "s") +
+             ctl_select("reg", "Regione o paese", [(g, g) for g in regioni], "g", "multi") +
+             ctl_spunta("shop", "Ha uno shop online", "n"))
+    return f"""<section>
+<h1 class="titolo-pagina">Produttori</h1>
+<p class="intro">Le aziende dietro i prodotti. Una scheda per azienda (o per indirizzo, se non siamo riusciti a risalire a chi sia). Molte fanno il prodotto che Peck poi vende con il suo nome.</p>
+{form_filtri("Filtri: produttori", ctl_cerca("Cerca un’azienda, un comune o un marchio", "per esempio: Follador, Norcia, pasta"), campi)}
+{barra_lista(conta_testo(len(produttori), "produttore", "produttori"))}
+{lista_html(["Azienda", "Per Peck", "Dove", "Quanto siamo sicuri"], chr(10).join(voci), "produttore", "produttori", " data-classe=\"larga\"", foto=False)}
+</section>"""
+
+
+def pagina_produttore(z, items, az, r):
+    prod = sorted((items[i] for i in z["prodotti"] if i in items), key=lambda x: nz(x["nome"]))
+    dove = luogo(z["comune"], z["provincia"])
+    chiavi = ""
+    for c in z["chiavi"]:
+        fonte = ext(c["fonte"], "fonte") if c["fonte"] else ""
+        chiavi += (f"<li><strong>{H(TIPI_CHIAVE.get(c['tipo'], c['tipo']))}</strong>: {H(c['chiave'])} "
+                   f"{badge(c['certezza'])}{(' · ' + fonte) if fonte else ''}</li>")
+    altre = ""
+    if len(z["fonti"]) > 1 or (len(z["fonti"]) == 1 and not any(c["fonte"] for c in z["chiavi"])):
+        altre = '<p class="meta">Altre fonti: ' + " ".join(ext(f, "fonte") for f in z["fonti"]) + "</p>"
+    note = ("<details><summary>Note della ricerca</summary>" + "".join(f"<p>{H(n)}</p>" for n in z["note"]) + "</details>"
+            if z["note"] else "")
+    dove_txt = " · ".join(x for x in [dove, z["regione"] if z["regione"] and z["regione"] != z["paese"] else "",
+                                      z["paese"] if z["paese"] and z["paese"] != "Italia" else ""] if x)
+    nome = z["nome"] if (z["trovata"] or z["id"] == "peck") else "Azienda non trovata"
+    ragione = (f'<p class="originale">Come risulta nei registri: {H(z["ragione"])}</p>'
+               if z["ragione"] and z["ragione"] != z["nome"] and z["trovata"] else "")
+    dl = ""
+    if z["marchio"] and z["id"] != "peck":
+        dl += f"<dt>Marchio</dt><dd>{H(z['marchio'])}</dd>"
+    dl += f"<dt>Dove</dt><dd>{H(dove_txt) if (dove or z['paese']) else 'sede non indicata nei dati di Peck'}</dd>"
+    if z["id"] != "peck":
+        dl += f"<dt>Negozio online</dt><dd>{H(testo_shop(z))}</dd>"
+    righe = "".join(
+        f'<li><a class="riga-el" href="{r}prodotto/{it["id"]}/"><span><span class="cat">{H(cap(it["categoria"]))}</span><br>'
+        f'<span class="nome">{H(it["nome"])}</span></span><span class="meta">'
+        f'{"in 1 pagina di Peck" if len(it["box"]) == 1 else f"in {len(it["box"])} pagine di Peck"}</span></a></li>'
+        for it in prod)
+    trovata = ""
+    if z["chiavi"]:
+        trovata = f'<section class="sezione"><h2>Come l’abbiamo trovata</h2><ul>{chiavi}</ul>{altre}{note}</section>'
+    elif note:
+        trovata = note
+    corpo = f"""{briciole(r, ("Produttori", "produttori/"), (nome, None))}
+<article>
+<p class="etichetta">{"Peck stessa" if z["id"] == "peck" else "Produttore"}</p>
+<h1>{H(nome)}</h1>
+{ragione}
+<p>{badge(z["certezza"])} {'<span class="badge b-shop">shop online</span>' if z["shop"] else ""}</p>
+<dl class="dati">{dl}</dl>
+<div class="gruppo-bottoni">{azienda_riquadro_link(z)}</div>
+{trovata}
+<section class="sezione"><h2>Cosa fa per Peck ({len(prod)})</h2>
+<ul class="righe">{righe}</ul>
+</section>
+</article>"""
+    descr = (f"{nome}" + (f", {dove_txt}" if dove_txt else "") + f": fa {len(prod)} "
+             f"{'prodotto' if len(prod) == 1 else 'prodotti'} venduti da Peck. Quanto siamo sicuri: "
+             f"{STATI_TESTO.get(z['certezza'], z['certezza'])}. {AVVISO}")
+    return corpo, descr
+
+
+# ---------------------------------------------------------------------------
+# Enoteca: lista, cantine, vini
+# ---------------------------------------------------------------------------
+
+def tipo_chip(t):
+    cl = re.sub(r"[^a-z]+", "-", t)
+    return f'<span class="tipo tipo-{cl}">{H("liquoroso" if t == "liquoroso/fortificato" else t)}</span>'
+
+
+def bottoni_punteggi(w, classe="bottone secondario piccolo"):
+    return (f'<a class="{classe}" href="{H(url_vivino(w["tt"]))}" target="_blank" rel="noopener noreferrer">'
+            f'Vivino{sr_nuova_scheda()}</a>'
+            f'<a class="{classe}" href="{H(url_wine_searcher(w["tt"], w["a"]))}" target="_blank" rel="noopener noreferrer">'
+            f'Wine-Searcher{sr_nuova_scheda()}</a>')
+
+
+def url_foto_vino(w):
+    if not w["ph"]:
+        return ""
+    return w["ph"] if w["ph"].startswith("http") else FOTO_WINERIM_PREFISSO + w["ph"]
+
+
+def scheda_vino(w, r):
+    """Scheda di una bottiglia (stessa struttura di quella che disegna app.js nell'elenco dell'enoteca)."""
+    pagina = f"{r}vino/{w['d']}/"
+    c = w["cantina"]
+    formati = [f for f in w["f"] if f[2] is not None]
+    principale = next((f for f in formati if f[2] == w["pr"]), None)
+    altri = [f for f in formati if f is not principale]
+    prezzo = euro_it(w["pr"]) if w["pr"] is not None else '<span class="meta">Prezzo non indicato</span>'
+    elenco = ""
+    if altri:
+        elenco = '<ul class="formati">' + "".join(
+            f"<li>{H(cap(f[0] or f[1]))}{(' ' + H(f[1])) if f[1] and f[0] else ''}: {euro_it(f[2])}</li>" for f in altri) + "</ul>"
+    return (f'<article class="scheda vino">'
+            f'{foto_html(url_foto_vino(w), "Bottiglia: " + w["n"] + (" " + w["a"] if w["a"] else ""), "vino")}'
+            f'<div class="corpo"><div class="col-a"><p class="tipo-riga">{tipo_chip(w["tipo"])}'
+            f'{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}</p>'
+            f'<h3 class="nome"><a class="vai" href="{pagina}">{H(w["n"])}</a></h3></div>'
+            f'<p class="meta"><span class="col-b"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a></span>'
+            f'<span class="col-c">{H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</span></p>'
+            f'<div class="col-d"><p class="prezzo">{prezzo}</p>{elenco}</div>'
+            f'<div class="bottoni">{bottoni_punteggi(w)}</div></div></article>')
+
+
+def pagina_enoteca(V):
+    M = V["meta"]
+    regs = sorted({(p, rg) for p, rg in M["regioni"]}, key=lambda x: x[1].lower())
+    campi = (
+        ctl_select("tipo", "Tipo", [(t, cap(t)) for t in M["tipi"]]) +
+        ctl_select("paese", "Paese", [(p, p) for p in M["paesi"]]) +
+        ctl_select("reg", "Regione", [(rg, rg, p) for p, rg in regs], "", "eq", "Tutte", dip="paese") +
+        '<div class="campo"><label for="f-can">Cantina</label><input type="text" id="f-can" name="can" '
+        'list="lista-cantine" placeholder="scrivi il nome" autocomplete="off"><datalist id="lista-cantine"></datalist></div>'
+        '<div class="campo"><label for="f-pmin">Prezzo da (€)</label><input type="number" id="f-pmin" name="pmin" '
+        'min="0" step="1" inputmode="numeric" placeholder="da"></div>'
+        '<div class="campo"><label for="f-pmax">Prezzo fino a (€)</label><input type="number" id="f-pmax" name="pmax" '
+        'min="0" step="1" inputmode="numeric" placeholder="fino a"></div>' +
+        ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
+                                     ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia")],
+                   modo="ord", vuoto="Nome"))
+    cantine = "".join(f'<li><a href="../cantina/{c["id"]}/">{H(c["nome"])}</a> <span class="meta">({c["n"]})</span></li>'
+                      for c in V["cantine"])
+    return f"""<section>
+<h1 class="titolo-pagina">Enoteca</h1>
+<p class="intro">{num(M["n_vini"])} vini della carta dell’enoteca di Peck, di {M["n_cantine"]} cantine. Ogni vino ha la sua pagina, con il profilo di degustazione; per la scheda completa c’è il link all’enoteca (Winerim). I prezzi sono quelli della fotografia del {data_lunga(M["data"])}.</p>
+{form_filtri("Filtri: enoteca", ctl_cerca("Cerca un vino, un’uva o una cantina", "per esempio: Barolo, Nebbiolo, Gaja"), campi)}
+{barra_lista(conta_testo(M["n_vini"], "vino", "vini"))}
+<div class="lista" id="lista" data-enoteca data-json="../vini.json" data-singolare="vino" data-plurale="vini">
+<div class="intestazione-elenco" aria-hidden="true"><span></span><span>Vino</span><span>Cantina</span><span>Dove</span><span>Prezzo</span></div>
+<ul class="griglia"></ul>
+<p class="vuoto" hidden>Nessun risultato. Prova a togliere qualche filtro.</p>
+<p class="caricamento">Carico i vini…</p>
+<button type="button" class="bottone secondario altri" hidden>Mostra altri</button>
+</div>
+<noscript><p class="meta">Per cercare fra i vini serve JavaScript. Senza, puoi scorrere l’elenco delle cantine qui sotto: ogni cantina ha la sua pagina con tutte le etichette.</p></noscript>
+<details class="elenco-cantine" id="cantine"><summary>Tutte le cantine, in ordine alfabetico ({M["n_cantine"]})</summary>
+<ul class="colonne">{cantine}</ul>
+</details>
+</section>""", f"""I {num(M["n_vini"])} vini della carta dell’enoteca di Peck: cerca per tipo, paese, regione, cantina e prezzo. {AVVISO}"""
+
+
+def pagina_cantina(c, boxes, r):
+    vini = sorted(c["vini"], key=lambda w: nz(w["n"]) + str(w["a"]))
+    tipi = [(t, n) for t, n in c["tipi"].items() if n > 0]
+    tipi_html = "<p>" + " · ".join(f"{tipo_chip(t)} {n}" for t, n in tipi) + "</p>" if tipi else ""
+    prezzi = ""
+    if c["pmin"] is not None:
+        txt = euro_it(c["pmin"]) if c["pmin"] == c["pmax"] else f"{euro_it(c['pmin'])} – {euro_it(c['pmax'])}"
+        prezzi = f"<div><b>{txt}</b>prezzi in carta</div>"
+    in_box = [boxes[b] for b in c["box"] if b in boxes]
+    box_html = ""
+    if in_box:
+        box_html = ('<section class="sezione"><h2>Compare anche nelle box regalo</h2><ul class="griglia">'
+                    + "".join(f"<li>{scheda_box_corta(b, r)}</li>" for b in in_box) + "</ul></section>")
+    corpo = f"""{briciole(r, ("Enoteca", "enoteca/"), (c["nome"], None))}
+<article>
+<p class="etichetta">Cantina</p>
+<h1>{H(c["nome"])}</h1>
+<p class="meta">{H(" · ".join(x for x in (c["paese"], c["regioni"]) if x))}</p>
+<div class="stat"><div><b>{c["n"]}</b>{"etichetta in carta" if c["n"] == 1 else "etichette in carta"}</div>{prezzi}</div>
+{tipi_html}
+{('<p class="meta">Nota: ' + H(c["nota"]) + "</p>") if c["nota"] else ""}
+{box_html}
+<section class="sezione"><h2>Tutte le etichette ({len(vini)})</h2>
+<p class="meta">I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti: qui non copiamo punteggi.</p>
+<ul class="griglia">{"".join(f"<li>{scheda_vino(w, r)}</li>" for w in vini)}</ul>
+</section>
+</article>"""
+    descr = (f"{c['nome']}" + (f" ({c['paese']})" if c["paese"] else "") + f": {c['n']} "
+             f"{'etichetta' if c['n'] == 1 else 'etichette'} nella carta dell’enoteca di Peck. {AVVISO}")
+    return corpo, descr
+
+
+def punti(v):
+    return "●" * v + "○" * (5 - v)
+
+
+def radar_svg(prof):
+    n = len(prof)
+    cx, cy, R = 100, 88, 56
+
+    def pt(i, v, extra=0):
+        a = math.radians(-90 + i * 360 / n)
+        rr = R * v / 5 + extra
+        return cx + rr * math.cos(a), cy + rr * math.sin(a)
+    anelli = "".join(
+        '<polygon class="anello" points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in (pt(i, k) for i in range(n))) + '"/>'
+        for k in range(1, 6))
+    assi = "".join(f'<line class="asse" x1="{cx}" y1="{cy}" x2="{pt(i, 5)[0]:.1f}" y2="{pt(i, 5)[1]:.1f}"/>' for i in range(n))
+    area = '<polygon class="area" points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in (pt(i, v) for i, (_, v) in enumerate(prof))) + '"/>'
+    etich = ""
+    for i, (nome, _) in enumerate(prof):
+        x, y = pt(i, 5, 11)
+        co = math.cos(math.radians(-90 + i * 360 / n))
+        anc = "middle" if abs(co) < 0.3 else ("start" if co > 0 else "end")
+        etich += f'<text x="{x:.1f}" y="{y + 3:.1f}" text-anchor="{anc}">{H(nome)}</text>'
+    return (f'<svg class="radar" viewBox="-25 0 250 176" aria-hidden="true" focusable="false">{anelli}{assi}{area}{etich}</svg>')
+
+
+def pagina_vino(w, V, r, correlati):
+    c = w["cantina"]
+    M = V["meta"]
+    link_winerim = w.get("l") or f"{LINK_WINERIM_PREFISSO}{w['id']}/{w['s']}"
+    nome_completo = w["n"] + (f" {w['a']}" if w["a"] and w["a"] not in w["n"] else "")
+    # profilo
+    profilo = ""
+    if w["at"]:
+        righe = "".join(f'<li><span class="attr">{H(n)}</span><span class="punti" aria-hidden="true">{punti(v)}</span>'
+                        f'<span class="sr">{v} su 5</span></li>' for n, v in w["at"])
+        radar = radar_svg(w["at"]) if len(w["at"]) >= 3 else ""
+        profilo = (f'<section class="sezione"><h2>Profilo di degustazione</h2>'
+                   f'<div class="profilo"><ul class="attributi">{righe}</ul>{radar}</div>'
+                   f'<p class="meta">Da 0 a 5, come li indica la scheda dell’enoteca (Winerim): sono giudizi suoi, non nostri.</p></section>')
+    # formati
+    con_nota = any(f[4] for f in w["f"])
+    righe_f = ""
+    for f in w["f"]:
+        nome_f = cap(f[0] or f[1] or "Formato non indicato") + (f" ({f[1]})" if f[1] and f[0] and f[0] != f[1] else "")
+        righe_f += (f"<tr><td>{H(nome_f)}</td><td>{euro_it(f[2]) if f[2] is not None else 'non indicato'}</td>"
+                    f"<td>{'disponibile' if f[3] else 'non disponibile'}</td>"
+                    + (f"<td>{H(f[4])}</td>" if con_nota else "") + "</tr>")
+    formati = (f'<section class="sezione"><h2>Formati e prezzi</h2><div class="tab-scorri"><table class="tab">'
+               f'<thead><tr><th>Formato</th><th>Prezzo</th><th>Nella carta</th>' + ('<th>Nota</th>' if con_nota else '') + '</tr></thead>'
+               f'<tbody>{righe_f}</tbody></table></div>'
+               f'<p class="meta">Prezzi e disponibilità del {data_lunga(M["data"])}: nella carta dell’enoteca possono essere cambiati.</p></section>')
+    # dettagli
+    ex = w["ex"]
+    dl = ""
+    if ex.get("gradazione"):
+        dl += f"<dt>Gradazione</dt><dd>{H(ex['gradazione'].replace('.', ','))}% vol.</dd>"
+    if ex.get("temperatura_servizio"):
+        dl += f"<dt>Temperatura di servizio</dt><dd>{H(re.sub(r'\\s*°?C$', '', ex['temperatura_servizio']))} °C</dd>"
+    if ex.get("bere_da") or ex.get("bere_fino_a"):
+        dl += f"<dt>Da bere</dt><dd>{H(ex.get('bere_da', '?'))} – {H(ex.get('bere_fino_a', '?'))}</dd>"
+    if ex.get("picco_da") or ex.get("picco_a"):
+        dl += f"<dt>Al suo meglio</dt><dd>{H(ex.get('picco_da', '?'))} – {H(ex.get('picco_a', '?'))}</dd>"
+    if ex.get("abbinamenti"):
+        dl += f"<dt>Abbinamenti</dt><dd>{H(', '.join(ex['abbinamenti']))}</dd>"
+    dettagli = ""
+    if dl:
+        dettagli = (f'<section class="sezione"><h2>Altri dati della scheda</h2><dl class="dati">{dl}</dl>'
+                    f'<p class="meta">Sono indicazioni di massima scritte dalla scheda dell’enoteca, non lette dall’etichetta: '
+                    f'per molti vini sono uguali (per esempio la stessa gradazione).</p></section>')
+    uve = f"<dt>Uve</dt><dd>{H(', '.join(w['u']))}</dd>" if w["u"] else ""
+    prezzo = euro_it(w["pr"]) if w["pr"] is not None else "prezzo non indicato"
+    stock = "disponibile" if any(f[3] for f in w["f"]) else "non disponibile"
+    # correlati
+    corr = ""
+    if correlati:
+        corr = ('<section class="sezione"><h2>Vini correlati</h2><ul class="griglia">'
+                + "".join(f"<li>{scheda_vino(x, r)}</li>" for x in correlati) + "</ul></section>")
+    corpo = f"""{briciole(r, ("Enoteca", "enoteca/"), (c["nome"], f"cantina/{c['id']}/"), (w["n"], None))}
+<article>
+<div class="dettaglio">
+{foto_html(url_foto_vino(w), "Bottiglia: " + nome_completo, "vino")}
+<div>
+<p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}</p>
+<h1>{H(w["n"])}</h1>
+<p class="originale"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a> · {H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</p>
+<dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo}</span> · {stock}</dd></dl>
+<div class="gruppo-bottoni">{bottoni_punteggi(w)}
+<a class="bottone piccolo" href="{H(link_winerim)}" target="_blank" rel="noopener noreferrer">Scheda completa in enoteca{sr_nuova_scheda()}</a></div>
+<p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino: da noi non ci sono punteggi.</p>
+</div>
+</div>
+{profilo}
+{formati}
+{dettagli}
+{corr}
+</article>"""
+    descr = (f"{nome_completo}: {w['tipo']}" + (f", {w['r']}" if w["r"] else "") + f", {w['paese']}. Cantina {c['nome']}. "
+             f"Prezzo nella carta dell’enoteca di Peck: {prezzo}. {AVVISO}")
+    return corpo, descr, nome_nome(w)
+
+
+def nome_nome(w):
+    return w["n"] + (f" {w['a']}" if w["a"] and w["a"] not in w["n"] else "")
+
+
+def vini_correlati(vini):
+    """Per ogni vino: fino a 3 della stessa cantina + fino a 3 della stessa regione e tipo (altra cantina)."""
+    per_cantina = defaultdict(list)
+    per_zona = defaultdict(list)
+    for w in vini:
+        per_cantina[w["c"]].append(w)
+        per_zona[(w["p"], w["r"], w["t"])].append(w)
+
+    def vicino(w, x):
+        pw, px = w["pr"], x["pr"]
+        dp = abs(pw - px) if pw is not None and px is not None else 1e9
+        try:
+            da = abs(int(w["a"]) - int(x["a"]))
+        except ValueError:
+            da = 99
+        return (dp, da, x["id"])
+    out = {}
+    for w in vini:
+        stessa = sorted((x for x in per_cantina[w["c"]] if x is not w), key=lambda x: (vicino(w, x)[1], vicino(w, x)[0], x["id"]))[:3]
+        zona = sorted((x for x in per_zona[(w["p"], w["r"], w["t"])] if x["c"] != w["c"]), key=lambda x: vicino(w, x))[:3]
+        out[w["id"]] = stessa + zona
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Come funziona
+# ---------------------------------------------------------------------------
+
+def pagina_come_funziona(dispensa, box, produttori, V, M):
+    conta = Counter(d["stato"] for d in dispensa)
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "vini", "cantine", "vini_nelle_box"]
+    righe_cat = "".join(
+        f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
+            (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
+        for c, parole in CATEGORIE)
+    li_csv = "".join(f'<li><a href="{REPO}/blob/main/data/{n}.csv" target="_blank" rel="noopener noreferrer">data/{n}.csv{sr_nuova_scheda()}</a></li>'
+                     for n in csv_nomi)
+    link_ok = sum(n for (campo, e), n in LINK.conteggi.items() if e == "ok")
+    link_tot = sum(LINK.conteggi.values())
+    link_rotti = sum(n for (campo, e), n in LINK.conteggi.items() if e in ("rotto", "dominio_parcheggiato"))
+    link_bloc = sum(n for (campo, e), n in LINK.conteggi.items() if e in ("bloccato", "errore"))
+    sezione_link = ""
+    if link_tot:
+        sezione_link = f"""<h2>I link ai negozi dei produttori</h2>
+<p>Il bottone «Compra dal produttore» porta al negozio online dell’azienda, non a noi: noi non vendiamo niente. Un programma (<code>src/controlla_link.py</code>) apre ogni link e controlla che risponda; il {data_lunga(LINK.data)} ne ha controllati {link_tot}: {link_ok} si aprono (alcuni li abbiamo controllati a mano perché il sito rifiuta i programmi), {link_rotti} sono rotti o domini in vendita e per {link_bloc} il controllo non è possibile con un programma (di solito perché il sito rifiuta i robot). Un link rotto non diventa mai un bottone; quelli sbagliati sono stati cercati a mano e corretti in <code>data/aziende.csv</code> (la colonna <code>nota</code> dice cosa è cambiato). I negozi cambiano: se un bottone non funziona, segnalacelo.</p>"""
+    return f"""<article class="testo-lungo">
+<h1>Come funziona</h1>
+<p class="intro">Peck Tracker è un progetto di appassionati. Sembra un catalogo, ma non vende niente: dice chi fa i prodotti che Peck Milano vende online e che cosa c’è nella carta dei vini della sua enoteca.</p>
+<p><strong>{H(AVVISO)}</strong></p>
+
+<h2>Da dove vengono i dati</h2>
+<ul>
+<li><strong>Lo shop. </strong>Abbiamo letto le {len(box)} pagine dello shop online di Peck e, di ogni prodotto, solo la frase in cui Peck scrive dove è prodotto o confezionato ("Prodotto in via…", "Confezionato da…", il bollo CE degli stabilimenti). Non copiamo ingredienti né descrizioni.</li>
+<li><strong>Le aziende. </strong>Per ogni indirizzo, bollo CE o produttore nominato abbiamo cercato a mano, sul web, chi c’è dietro. Ogni riga ha la sua fonte (registri delle imprese, siti ufficiali, gli elenchi europei degli stabilimenti riconosciuti). Non è un lavoro fatto da un programma.</li>
+<li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
+<li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì.</li>
+</ul>
+
+<h2>Quanto siamo sicuri</h2>
+<p>Ogni azienda ha un’etichetta:</p>
+<ul>
+<li>{badge("certa")} una fonte mostra proprio quell’indirizzo o quel codice con quell’azienda.</li>
+<li>{badge("probabile")} l’indizio è forte ma indiretto.</li>
+<li>{badge("non trovata")} non siamo riusciti a risalire all’azienda.</li>
+<li>{badge("peck")} Peck scrive di aver fatto o confezionato il prodotto nella sua sede di via Spadari 9, a Milano.</li>
+<li>{badge("nessuna")} nella scheda del prodotto Peck non scrive dove è fatto.</li>
+</ul>
+<p>Sui {len(dispensa)} prodotti della dispensa: {conta["certa"]} hanno un’azienda certa, {conta["probabile"]} probabile, {conta["non trovata"]} non trovata, {conta["peck"]} sono fatti da Peck stessa e per {conta["nessuna"]} Peck non indica nulla. Se un prodotto ha più luoghi, l’etichetta mostra quella più sicura.</p>
+
+<h2>I limiti, detti chiaramente</h2>
+<ul>
+<li>È una fotografia del {data_lunga(M["data"])}. Prezzi, box e vini cambiano: oggi il catalogo è quello delle “Selezioni Natalizie”.</li>
+<li>Contiamo solo quello che Peck vende online, non quello che c’è nei suoi negozi.</li>
+<li>L’indirizzo che Peck scrive può essere quello di chi confeziona, non di chi fabbrica. Peck usa “prodotto in”, “prodotto e confezionato in”, “confezionato da” senza spiegare la differenza: noi teniamo la parola e la frase esatta.</li>
+<li>Molte aziende lavorano per conto terzi: fanno il prodotto che Peck vende con il suo nome. Non vuol dire che Peck non c’entri: dice solo chi lo fabbrica.</li>
+<li>Il bollo CE dice dove sta lo stabilimento, non di chi è: l’azienda va cercata negli elenchi. Alcuni codici non sono bolli sanitari.</li>
+<li>Le righe “non trovata” sono dove la ricerca non è arrivata; si possono riprovare. “Nessuno shop online” vuol dire solo che non l’abbiamo trovato sul sito ufficiale.</li>
+<li>I testi di Peck hanno refusi (per esempio “Ortobello” per “Orbetello”). Le frasi sono copiate com’erano; dove due scritture indicano chiaramente lo stesso posto, le abbiamo unite.</li>
+<li>Alcuni prodotti non hanno una foto tutta loro: usiamo quella della box più piccola in cui compaiono e lo scriviamo sulla foto.</li>
+<li>Nell’enoteca l’intestazione della carta parla di 1.005 cantine, ma l’elenco pubblico ne mostra {M["n_cantine"]} ({num(M["n_vini"])} vini). Non sappiamo perché: forse sono vini archiviati o nascosti.</li>
+<li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
+<li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
+</ul>
+{sezione_link}
+<h2>Come sono scelte le categorie</h2>
+<p>Le categorie dei prodotti sono decise da un programma che cerca alcune parole nel nome del prodotto: la prima categoria che trova vince. Non è una classificazione ufficiale e qualche prodotto può finire nella categoria sbagliata. Le parole sono queste (il resto va in «altro»):</p>
+<div class="tab-scorri"><table class="tab"><thead><tr><th>Categoria</th><th>Parole cercate nel nome</th></tr></thead><tbody>{righe_cat}</tbody></table></div>
+
+<h2>Foto, caratteri e riservatezza</h2>
+<p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (shop.peck.it) e di Winerim. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
+
+<h2>Dati e codice</h2>
+<p>Tutto è pubblico: le tabelle (si aprono bene anche con Excel) e i programmi che le costruiscono.</p>
+<ul>
+<li><a href="{REPO}" target="_blank" rel="noopener noreferrer">Il progetto su GitHub{sr_nuova_scheda()}</a></li>
+{li_csv}
+</ul>
+<p>Hai trovato un errore o sai chi fa un prodotto “non trovato”? Apri una segnalazione su GitHub: <a href="{REPO}/issues" target="_blank" rel="noopener noreferrer">segnalazioni{sr_nuova_scheda()}</a>.</p>
+</article>"""
+
+
+def pagina_404():
+    corpo = f"""<div class="vuoto"><h1>Pagina non trovata</h1>
+<p>Questo indirizzo non esiste (o i dati sono stati aggiornati).</p>
+<p><a class="bottone" href="{PREFISSO_SITO}dispensa/">Vai alla dispensa</a></p></div>"""
+    return layout(titolo="Pagina non trovata", descr="Questa pagina non esiste. " + AVVISO, corpo=corpo,
+                  rel="", sezione="", assoluto=True)
+
+
+# ---------------------------------------------------------------------------
+# Scrittura delle pagine
+# ---------------------------------------------------------------------------
+
+CARTELLE_GENERATE = ["dispensa", "prodotto", "box", "produttori", "produttore", "enoteca", "cantina",
+                     "vino", "come-funziona"]
+FILE_GENERATI = ["index.html", "404.html", "vini.json", "dati.json", "sitemap.xml", "robots.txt"]
+
+
+def pulisci_docs():
     DOCS.mkdir(exist_ok=True)
-    p = DOCS / nome
+    for c in CARTELLE_GENERATE:
+        shutil.rmtree(DOCS / c, ignore_errors=True)
+    for f in FILE_GENERATI:
+        (DOCS / f).unlink(missing_ok=True)
+
+
+def scrivi_json(nome, dati):
     testo = json.dumps(dati, ensure_ascii=False, separators=(",", ":"))
-    p.write_text(testo, encoding="utf-8")
+    (DOCS / nome).write_text(testo, encoding="utf-8")
     return len(testo.encode("utf-8"))
+
+
+def scrivi_sito():
+    dispensa, box, produttori, st = costruisci_cibo()
+    box_per_nome = {nz(b["nome"]): b["id"] for b in box}
+    V, stv = costruisci_vini(box_per_nome)
+    az, items, boxes = prepara_cibo(dispensa, box, produttori)
+    M = V["meta"]
+    pulisci_docs()
+
+    # --- Dispensa (home e /dispensa/)
+    desc_dispensa = (f"I {len(dispensa)} prodotti alimentari che Peck vende online: per ognuno chi lo fa e dove, "
+                     f"e quanto siamo sicuri. {AVVISO}")
+    scrivi_pagina("dispensa", layout(titolo="Dispensa", descr=desc_dispensa, rel="dispensa", sezione="dispensa",
+                                     corpo=pagina_dispensa(dispensa, az, "dispensa")), "dispensa")
+    scrivi_pagina("", layout(titolo="Dispensa", descr=desc_dispensa, rel="", sezione="dispensa", home=True,
+                             corpo=pagina_dispensa(dispensa, az, "", home=True)), "home")
+
+    # --- Prodotti
+    for it in dispensa:
+        corpo, descr = pagina_prodotto(it, az, boxes, "../../")
+        scrivi_pagina(f"prodotto/{it['id']}", layout(titolo=it["nome"], descr=descr, corpo=corpo,
+                                                     rel=f"prodotto/{it['id']}", sezione="dispensa"), "prodotto")
+
+    # --- Box
+    scrivi_pagina("box", layout(titolo="Box regalo", sezione="box", rel="box", corpo=pagina_box_lista(box, items),
+                                descr=f"Le {len(box)} pagine dello shop di Peck, “spacchettate”: ogni prodotto con chi lo fa. {AVVISO}"),
+                  "box (elenco)")
+    for b in box:
+        corpo, descr = pagina_box(b, items, az, "../../")
+        scrivi_pagina(f"box/{b['id']}", layout(titolo=b["nome"], descr=descr, corpo=corpo,
+                                               rel=f"box/{b['id']}", sezione="box"), "box")
+
+    # --- Produttori
+    scrivi_pagina("produttori", layout(titolo="Produttori", sezione="produttori", rel="produttori",
+                                       corpo=pagina_produttori_lista(produttori),
+                                       descr=f"Le {len(produttori)} aziende dietro i prodotti che Peck vende, con le fonti. {AVVISO}"),
+                  "produttori (elenco)")
+    for z in produttori:
+        corpo, descr = pagina_produttore(z, items, az, "../../")
+        scrivi_pagina(f"produttore/{z['id']}", layout(
+            titolo=z["nome"] if (z["trovata"] or z["id"] == "peck") else "Azienda non trovata", descr=descr,
+            corpo=corpo, rel=f"produttore/{z['id']}", sezione="produttori"), "produttore")
+
+    # --- Enoteca
+    corpo, descr = pagina_enoteca(V)
+    scrivi_pagina("enoteca", layout(titolo="Enoteca", descr=descr, corpo=corpo, rel="enoteca", sezione="enoteca"),
+                  "enoteca (elenco)")
+    for c in V["cantine"]:
+        corpo, descr = pagina_cantina(c, boxes, "../../")
+        scrivi_pagina(f"cantina/{c['id']}", layout(titolo=c["nome"], descr=descr, corpo=corpo,
+                                                   rel=f"cantina/{c['id']}", sezione="enoteca"), "cantina")
+    corr = vini_correlati(V["vini"])
+    for w in V["vini"]:
+        corpo, descr, titolo = pagina_vino(w, V, "../../", corr[w["id"]])
+        scrivi_pagina(f"vino/{w['d']}", layout(titolo=titolo, descr=descr, corpo=corpo,
+                                               rel=f"vino/{w['d']}", sezione="enoteca"), "vino")
+
+    # --- Come funziona, 404
+    scrivi_pagina("come-funziona", layout(
+        titolo="Come funziona", sezione="come-funziona", rel="come-funziona",
+        descr=f"Da dove vengono i dati di Peck Tracker, quanto siamo sicuri e quali sono i limiti. {AVVISO}",
+        corpo=pagina_come_funziona(dispensa, box, produttori, V, M)), "come funziona")
+    (DOCS / "404.html").write_text(pagina_404(), encoding="utf-8")
+
+    # --- dati per i filtri dell'enoteca, sitemap, robots
+    n_json = scrivi_json("vini.json", json_vini(V))
+    oggi = date.today().isoformat()
+    urls = "".join(f"<url><loc>{URL_SITO}{rel + '/' if rel else ''}</loc><lastmod>{oggi}</lastmod></url>\n" for rel in PAGINE)
+    (DOCS / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n'
+                                      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + "</urlset>\n",
+                                      encoding="utf-8")
+    (DOCS / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {URL_SITO}sitemap.xml\n", encoding="utf-8")
+    return dispensa, box, produttori, V, st, stv, n_json
 
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    dispensa, box, produttori, st = costruisci_cibo()
-    box_per_nome = {nz(b["nome"]): b["id"] for b in box}
-    vini, stv = costruisci_vini(box_per_nome)
-
-    meta = {
-        "data": DATA_FOTOGRAFIA, "generato": date.today().isoformat(), "repo": REPO,
-        "csv": [f"{REPO}/blob/main/data/{n}.csv" for n in
-                ("prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "vini",
-                 "cantine", "vini_nelle_box")],
-        "categorie": ORDINE_CATEGORIE,
-        "categorie_parole": {c: p for c, p in CATEGORIE},
-        "stati": ORDINE_STATI,
-        "n_elementi": len(dispensa), "n_box": len(box), "n_produttori": len(produttori),
-        "n_vini": vini["meta"]["n_vini"], "n_cantine": vini["meta"]["n_cantine"],
-    }
-    n1 = scrivi("dati.json", {"meta": meta, "dispensa": dispensa, "box": box, "produttori": produttori})
-    n2 = scrivi("vini.json", vini)
-
-    print(f"dati.json: {n1/1024:.0f} KB   vini.json: {n2/1024:.0f} KB")
+    dispensa, box, produttori, V, st, stv, n_json = scrivi_sito()
+    print(f"pagine scritte: {sum(CONTA.values())}  (+ 404.html)")
+    for k, n in CONTA.items():
+        print(f"   {k:20} {n}")
+    print(f"vini.json: {n_json/1024:.0f} KB")
     print(f"elementi (dispensa): {st['elementi']}   box/pagine: {st['box']}   produttori: {st['produttori']}"
-          f"   vini: {vini['meta']['n_vini']}   cantine: {vini['meta']['n_cantine']}")
+          f"   vini: {V['meta']['n_vini']}   cantine: {V['meta']['n_cantine']}")
     print(f"righe di origine con un luogo/codice: {st['righe_con_luogo']}, abbinate a un'azienda: "
           f"{st['righe_abbinate']}  ({st['come_abbinate']})")
     print("stato degli elementi:", st["stati_elementi"])
@@ -786,8 +1908,11 @@ def main():
     if st["aziende_non_usate"]:
         print("righe di aziende.csv non usate da nessun elemento:", st["aziende_non_usate"])
     print("vini senza foto:", stv["senza_foto"], " link diversi dal solito:", stv["link_diversi"],
-          " cantine mancanti in cantine.csv:", stv["mancanti"], " vini senza prezzo:",
-          vini["meta"]["senza_prezzo"])
+          " cantine mancanti in cantine.csv:", stv["mancanti"], " vini senza prezzo:", V["meta"]["senza_prezzo"])
+    print("vini con profilo di degustazione:", stv["con_profilo"], " con altri dati (gradazione, abbinamenti...):",
+          stv["con_dettagli"])
+    esclusi = sorted(u for u, e in LINK.esiti.items() if e in ("rotto", "dominio_parcheggiato"))
+    print("link marcati rotti (non diventano bottoni):", len(esclusi))
 
 
 if __name__ == "__main__":

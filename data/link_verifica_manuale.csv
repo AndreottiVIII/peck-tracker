@@ -1,0 +1,11 @@
+﻿url,esito,nota
+https://www.mostardaluccini.com,ok,"Python non si collega (il sito chiude la connessione ai robot), ma con WebFetch si apre"
+https://mostardaluccini.com/negozio/,ok,"Python non si collega, con WebFetch si apre: shop con prodotti, prezzi e carrello"
+https://www.mostardaluccini.com/contatti/,ok,"Python non si collega, con WebFetch si apre: pagina Contatti"
+https://spezzafumo.it,ok,si apre ma mostra la scritta 'maintenance' (sito in manutenzione il 25/10/2026)
+https://expoplaza-tuttofood.fieramilano.it/en/exhibitor/tullio-manlio-capobianco/brand/capobianco-organic-farm,rotto,"il nome del sito non esiste piu' (DNS: dominio inesistente, controllato con 8.8.8.8 e WebFetch)"
+https://www.agrifood.centroestero.org/APICOLTURA%20BREZZO/65208,ok,"da Python va in timeout, con WebFetch si apre (APICOLTURA BREZZO | AGRIFOOD)"
+https://www.informazione-aziende.it/Azienda_WALCOR-CHOCOLATE-SRL,ok,il sito risponde 429 ai programmi ma nel browser si apre (scheda WALCOR CHOCOLATE)
+https://www.informazione-aziende.it/Azienda_C-C-EXPRESS-SAS-DI-PAOLINI-FRANCA-C,ok,il sito risponde 429 ai programmi ma nel browser si apre (scheda C&C EXPRESS)
+https://www.gamberorosso.it/?p=152042,ok,403 ai programmi; nel browser si apre e porta alla scheda di I Tattoli
+https://www.agriturismo.it/en/farmhouse/lombardy/pavia/CasaZuffada-3891505/index.html,rotto,nel browser porta alla home del sito: la pagina dell'agriturismo non c'e' piu'

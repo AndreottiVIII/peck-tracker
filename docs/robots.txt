@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://andreottiviii.github.io/peck-tracker/sitemap.xml

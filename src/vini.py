@@ -6,7 +6,12 @@ Uso:  python -I src/vini.py [--pausa SECONDI] [--forza]
   i dati vengono da un'API JSON pubblica, senza autenticazione.
 - Una richiesta alla volta, con pausa fra l'una e l'altra (default 2 secondi).
 - Le pagine gia' scaricate in data/raw/winerim/ vengono saltate (--forza per riscaricarle).
-- Non salviamo foto ne' attributi di degustazione: solo i dati utili a capire chi produce cosa.
+- Non salviamo foto ne' testi descrittivi: solo i dati strutturati (attributi di degustazione da 0 a 5,
+  gradazione, temperatura di servizio, finestra di maturita', abbinamenti).
+- Con --dettagli scarica anche la scheda di ogni vino (una richiesta al secondo) in
+  data/raw/winerim/vini/<id>.json: servono per i dati strutturati sopra. I testi lunghi che ci sono
+  nelle schede (note di degustazione, storia della cantina) restano in data/raw/ (non pubblicata) e
+  NON vanno copiati nel sito ne' nei CSV.
 """
 import argparse
 import csv
@@ -81,6 +86,85 @@ def scarica(forza, pausa):
     return file
 
 
+def scarica_dettagli(vini, pausa):
+    """Scarica la scheda di ogni vino in data/raw/winerim/vini/<id>.json (salta quelle gia' scaricate)."""
+    cartella = RAW / "vini"
+    cartella.mkdir(parents=True, exist_ok=True)
+    sess = requests.Session()
+    sess.headers.update(HEAD)
+    ultima, nuovi, errori = 0.0, 0, []
+    for i, w in enumerate(vini, 1):
+        f = cartella / f"{w['id']}.json"
+        if f.exists():
+            continue
+        for tentativo in (1, 2):
+            attesa = pausa - (time.time() - ultima)
+            if attesa > 0:
+                time.sleep(attesa)
+            try:
+                r = sess.get(f"{API}/wines/{w['id']}/{w['slugname']}", timeout=60)
+                ultima = time.time()
+                if r.status_code == 200 and "json" in r.headers.get("content-type", ""):
+                    f.write_bytes(r.content)
+                    nuovi += 1
+                    break
+                errore = f"HTTP {r.status_code}"
+            except requests.RequestException as e:
+                ultima = time.time()
+                errore = type(e).__name__
+            if tentativo == 2:
+                errori.append((w["id"], errore))
+        if nuovi and nuovi % 100 == 0:
+            print(f"  schede scaricate: {nuovi} (vino {i}/{len(vini)})", flush=True)
+    print(f"schede dei vini: {nuovi} nuove, {len(errori)} con errore", errori[:10], flush=True)
+
+
+# Abbinamenti: i nomi di Winerim sono in spagnolo, li mettiamo in italiano.
+ABBINAMENTI = {
+    "carne-ternera": "manzo e vitello", "carne-ternera-lechal": "vitello da latte",
+    "carne-cordero": "agnello", "carne-caza": "selvaggina", "carne-aves": "pollame",
+    "carne-cerdo": "maiale", "carne-adobada": "carne marinata", "carne-conejo": "coniglio",
+    "carne-pato": "anatra", "carne-embutidos": "salumi", "carne-jamon": "prosciutto",
+    "queso-curado": "formaggi stagionati", "queso-azul": "formaggi erborinati",
+    "queso-tierno-y-cremoso": "formaggi freschi e cremosi", "queso": "formaggi",
+    "vegetariana": "piatti vegetariani", "champiñones": "funghi", "arroz": "riso", "pasta": "pasta",
+    "pescado-azul": "pesce azzurro", "pescado-blanco": "pesce bianco", "marisco": "crostacei e molluschi",
+    "fruta": "frutta", "aperitivos": "aperitivo", "postre": "dessert", "postres": "dessert",
+    "ensalada": "insalate", "verduras": "verdure", "huevos": "uova", "sushi": "sushi",
+    "queso-de-cabra": "formaggi di capra", "picante": "piatti piccanti", "postres-dulces": "dessert",
+    "cocido": "stufati", "foie": "foie gras", "chocolate": "cioccolato", "frutos-secos": "frutta secca",
+}
+
+
+def abbinamento_it(nome):
+    return ABBINAMENTI.get(nome, nome)
+
+
+def dettaglio(wid):
+    """Campi strutturali della scheda scaricata (o {} se manca). Nessun testo descrittivo."""
+    f = RAW / "vini" / f"{wid}.json"
+    if not f.exists():
+        return {}
+    j = json.loads(f.read_text(encoding="utf-8"))
+    out = {}
+    alc = (j.get("wineDetails") or {}).get("alcohol")
+    if isinstance(alc, (int, float)) and alc > 0:
+        out["gradazione"] = f"{alc / 10:g}"   # Winerim lo scrive in decimi: 135 = 13,5%
+    t = (j.get("wineDetails") or {}).get("serviceTemperature")
+    if t:
+        out["temperatura_servizio"] = str(t)
+    fin = j.get("drinkingWindow") or {}
+    for chiave, sotto, col in (("drinkingWindow", "start", "bere_da"), ("drinkingWindow", "end", "bere_fino_a"),
+                               ("primeWindow", "start", "picco_da"), ("primeWindow", "end", "picco_a")):
+        v = (fin.get(chiave) or {}).get(sotto)
+        if v:
+            out[col] = str(v)
+    ab = [abbinamento_it(p["name"]) for p in (j.get("pairings") or []) if p.get("name")]
+    if ab:
+        out["abbinamenti"] = "; ".join(dict.fromkeys(ab))
+    return out
+
+
 VARIANTI = {  # formato di Winerim -> italiano
     "botella": "bottiglia", "media-botella": "mezza bottiglia", "botella-pequena": "bottiglia piccola",
     "magnum": "magnum", "doble-magnum": "doppio magnum", "jeroboam": "jeroboam",
@@ -153,6 +237,12 @@ def costruisci(vini):
             "uve": "; ".join(uve(w["grapes"])),
             "link": f"https://web.winerim.com/enotecapeck/wines/{w['id']}/{w['slugname']}",
         }
+        ta = w.get("tastingAttributes") or {}
+        for k, col in ATTRIBUTI.items():
+            base[col] = "" if ta.get(k) is None else ta[k]
+        for col in COL_VINI[COL_VINI.index("gradazione"):]:
+            base.setdefault(col, "")
+        base.update(dettaglio(w["id"]))
         prezzi = w["prices"] or [None]  # un vino senza prezzo resta con una riga
         for p in prezzi:
             r = dict(base)
@@ -172,7 +262,13 @@ def costruisci(vini):
 
 
 COL_VINI = ["id", "nome", "annata", "tipo", "codice_paese", "paese", "regione", "cantina", "uve",
-            "formato", "variante", "prezzo_euro", "in_stock", "link", "nota"]
+            "formato", "variante", "prezzo_euro", "in_stock", "link", "nota",
+            "intensita", "freschezza", "dolcezza", "tannicita", "fruttato", "affinamento",
+            "gradazione", "temperatura_servizio", "bere_da", "bere_fino_a", "picco_da", "picco_a",
+            "abbinamenti"]
+# attributi di degustazione di Winerim (0-5) -> colonna italiana
+ATTRIBUTI = {"power": "intensita", "acidity": "freschezza", "sweetness": "dolcezza",
+             "tannin": "tannicita", "fruity": "fruttato", "aging": "affinamento"}
 COL_CANTINE = ["cantina", "paese", "regioni", "n_etichette", "n_rossi", "n_bianchi", "n_spumanti",
                "n_dolci", "n_rosati", "n_liquorosi", "prezzo_min", "prezzo_max", "nota"]
 
@@ -222,9 +318,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pausa", type=float, default=2.0)
     ap.add_argument("--forza", action="store_true")
+    ap.add_argument("--dettagli", action="store_true",
+                    help="scarica anche la scheda di ogni vino (1 richiesta al secondo, circa un'ora)")
+    ap.add_argument("--pausa-dettagli", type=float, default=1.0)
     a = ap.parse_args()
     scarica(a.forza, a.pausa)
     vini = leggi()
+    if a.dettagli:
+        scarica_dettagli(vini, a.pausa_dettagli)
     righe, nome_cantina = costruisci(vini)
     scrivi_csv(DATA / "vini.csv", COL_VINI, righe)
     rc = cantine(vini, nome_cantina)

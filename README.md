@@ -23,6 +23,8 @@ Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
 - `vini.csv`: i 3.071 vini della carta dell'enoteca, una riga per formato (3.082 righe).
 - `cantine.csv`: le 820 cantine della carta, con quante etichette hanno.
 - `vini_nelle_box.csv`: i produttori di vino nominati nelle box dello shop, confrontati con la carta.
+- `link_controllati.csv` (e `link_verifica_manuale.csv`): l'esito del controllo dei link ai siti, agli
+  shop e alle fonti delle aziende (vedi "Il controllo dei link").
 
 ## Passo 1: dove viene prodotto quello che Peck vende online
 
@@ -159,7 +161,10 @@ scrive:
 
 - `vini.csv`: 3.082 righe per 3.071 vini, una riga per formato. Colonne: `id`, `nome`, `annata`,
   `tipo`, `codice_paese`, `paese`, `regione`, `cantina`, `uve`, `formato`, `variante`,
-  `prezzo_euro`, `in_stock`, `link`, `nota`.
+  `prezzo_euro`, `in_stock`, `link`, `nota`, poi il profilo di degustazione da 0 a 5 come lo scrive
+  Winerim (`intensita`, `freschezza`, `dolcezza`, `tannicita`, `fruttato`, `affinamento`; vuoto se
+  non indicato) e, dalla scheda di ogni vino, `gradazione`, `temperatura_servizio`, `bere_da`,
+  `bere_fino_a`, `picco_da`, `picco_a`, `abbinamenti` (tradotti in italiano).
 - `cantine.csv`: 820 cantine con paese, regioni, numero di etichette (totale e per tipo: rossi,
   bianchi, spumanti, dolci, rosati, liquorosi) e prezzo minimo e massimo.
 - `vini_nelle_box.csv` (scritto da `src/vini_box.py`): i 13 produttori di vino nominati nelle box
@@ -167,9 +172,17 @@ scrive:
   spumantizza il Prosecco Peck) no. La colonna `corrispondenza` dice se la cantina e' identica
   (`esatta`), collegata con un altro nome (`approssimata`) o assente (`non in carta`).
 
+Con `python -I src/vini.py --dettagli` il programma scarica anche la scheda di ogni vino
+(`data/raw/winerim/vini/<id>.json`, una richiesta al secondo, circa un'ora; le schede gia' scaricate
+si saltano) per le colonne dopo `affinamento`. Quelle schede contengono anche testi lunghi
+(note di degustazione, storia della cantina) che sono prosa di Winerim: restano in `data/raw/`, che non
+si pubblica, e **non vengono copiati** ne' nei CSV ne' nel sito: per quelli il sito rimanda alla
+«Scheda completa in enoteca». Nei dati strutturati molti valori sono di massima (per esempio circa un
+terzo dei vini ha gradazione 13,5): il sito lo dice.
+
 Qualche numero: le cantine con piu' etichette sono Gaja (68), Domaine de La Romanee-Conti (67),
 Tenuta San Guido (64), Giacomo Conterno (56) e Chateau d'Yquem (47). Per paese, la Francia ha 1.607
-righe e l'Italia 1.233. Non salviamo foto ne' note di degustazione.
+righe e l'Italia 1.233. Non salviamo foto ne' testi descrittivi.
 
 ### Limiti della carta dei vini
 
@@ -180,20 +193,73 @@ righe e l'Italia 1.233. Non salviamo foto ne' note di degustazione.
 - **E' una fotografia del 24 ottobre 2026.** I prezzi e i vini disponibili cambiano.
 - Il confronto con le box e' fatto per nome: va controllato a occhio dove la corrispondenza non e' esatta.
 
+## Il controllo dei link
+
+`python -I src/controlla_link.py` apre ogni link di `data/aziende.csv` (colonne `sito`, `link_shop`,
+`fonte`) e un campione di 40 link dei vini (`--vini-tutti` li fa tutti: circa un'ora, un secondo di
+pausa per sito) con un browser finto: segue i reindirizzamenti, 15 secondi di attesa, un secondo
+tentativo, e scrive `data/link_controllati.csv` con `url`, `campo`, `chiave`, `status`, `url_finale`,
+`esito` (`ok`, `rotto`, `bloccato`, `dominio_parcheggiato`, `errore`) e `nota`.
+
+- **Un link `rotto` o `dominio_parcheggiato` non diventa mai un bottone nel sito** (lo decide
+  `src/sito.py` leggendo questo file).
+- `bloccato` (401, 403, 429, pagine anti-robot) e `errore` (il nome del sito non si trova da questo
+  computer) vanno guardati a mano: gli esiti decisi a mano stanno in `data/link_verifica_manuale.csv`
+  e hanno la precedenza.
+- Quando un link `sito` o `link_shop` e' rotto si cerca la vera home dell'azienda e si corregge
+  `aziende.csv` solo se si apre il nuovo indirizzo e si vede che e' proprio il suo negozio (la
+  colonna `nota` dice cosa e' cambiato); altrimenti si svuota `link_shop` e `shop_online` diventa
+  `non verificato`.
+
 ## Il sito
 
-Sta in `docs/` ed e' pubblicato con GitHub Pages (ramo `main`, cartella `/docs`). Sezioni:
-Dispensa (194 prodotti), Box regalo (46 pagine "spacchettate"), Produttori (90), Enoteca
-(3.071 vini) e Come funziona. Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in
-`data/raw/` per i link alle foto) e scrive `docs/dati.json` e `docs/vini.json`: va rilanciato
-dopo ogni modifica ai CSV.
+Sta in `docs/` ed e' pubblicato con GitHub Pages (ramo `main`, cartella `/docs`). **Ogni pagina ha un
+indirizzo vero** (una cartella con dentro `index.html`), come un sito normale: "Indietro" e "Avanti"
+del browser funzionano, e ogni pagina ha il suo titolo e la sua descrizione. I link sono tutti relativi,
+quindi va bene sia sotto `/peck-tracker/` su GitHub Pages sia alla radice di un server locale.
+
+| Indirizzo | Che pagina e' | Quante |
+| --- | --- | --- |
+| `index.html`, `dispensa/` | la Dispensa (194 prodotti, filtri, Schede / Elenco) | 2 |
+| `prodotto/<id>/` | un prodotto: chi lo fa, dove, la frase di Peck, le box in cui sta | 194 |
+| `box/`, `box/<id>/` | le 46 pagine dello shop, "spacchettate" | 1 + 46 |
+| `produttori/`, `produttore/<id>/` | le aziende, con fonti e prodotti | 1 + 90 |
+| `enoteca/` | i 3.071 vini, con filtri e Schede / Elenco | 1 |
+| `cantina/<id>/` | una cantina e le sue etichette | 820 |
+| `vino/<id>-<nome>/` | un vino: foto, profilo di degustazione (punti e grafico a ragnatela), formati e prezzi, vini correlati, bottoni Vivino / Wine-Searcher / scheda completa in enoteca | 3.071 |
+| `come-funziona/`, `404.html` | spiegazioni, limiti, link controllati | 2 |
+
+Le pagine di prodotti, box, produttori, cantine e vini sono HTML completo, si leggono anche senza
+JavaScript. Le liste (Dispensa, Box, Produttori, Enoteca) filtrano con un po' di JavaScript
+(`docs/app.js`) e **tengono i filtri nell'indirizzo** (`?q=tartufo&cat=salumi&vista=elenco`), cosi'
+aprendo un prodotto e premendo "Indietro" si torna alla stessa lista filtrata. `?vista=elenco` e' la
+vista a righe (una riga per voce, con foto piccola); senza e' la vista a schede. Gli indirizzi vecchi
+con `#/` rimandano alle pagine nuove. L'Enoteca legge `docs/vini.json` (dati compatti per i filtri).
+
+I bottoni **Vivino** e **Wine-Searcher** di ogni vino aprono una *ricerca* sui loro siti
+(`vivino.com/search/wines?q=<cantina + nome>` e `wine-searcher.com/find/<parole+unite>/<annata>`):
+non copiamo punteggi.
+
+Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in `data/raw/` per i link alle foto),
+**cancella le pagine generate e le riscrive tutte** (circa 4.200 pagine, 55 MB; circa un minuto): va
+rilanciato dopo ogni modifica ai CSV. Non tocca `docs/style.css` e `docs/app.js`, che sono scritti a
+mano.
 
 **In `docs/` non ci sono foto.** Le immagini dei prodotti e delle bottiglie sono collegate
-direttamente ai server di Peck e di Winerim: il sito le mostra ma non le copia. La grafica si
-ispira all'atmosfera di Peck, senza logo ne' file grafici di Peck.
+direttamente ai server di Peck e di Winerim: il sito le mostra ma non le copia.
+
+**Grafica.** Giallo `#FFCD45` e marrone `#5E4824` sono i due colori del CSS di peck.it
+(`--giallo-peck`, `--marrone-peck`); il carattere e' Raleway (quello di Peck, libero su Google Fonts,
+caricato da li') e Playfair Display corsivo per le frasi di Peck. Non c'e' nessun file di Peck:
+**il logo di Peck non e' mai pubblicato.** Sul computer del proprietario, e solo li', ogni pagina carica
+`docs/personale.js` (solo se l'indirizzo e' `localhost` o `127.0.0.1`), che mette il logo nella
+testata prendendolo dal server di Peck. `docs/personale.js` e' nel `.gitignore` (controllo:
+`git check-ignore docs/personale.js`); se il file manca il sito funziona uguale, senza logo.
 
 Per vederlo sul computer: `python -I -m http.server 8000 --directory docs`, poi
-http://127.0.0.1:8000/ (aprire `index.html` direttamente non funziona).
+http://127.0.0.1:8000/ (aprire `index.html` direttamente non funziona: i vini si leggono con `fetch`).
+Per controllare che funzioni anche sotto un prefisso: `python -I -m http.server 8001`
+dalla cartella `peck-tracker` e aprire http://127.0.0.1:8001/docs/.
 
 ## Come rifare tutto
 
@@ -204,12 +270,14 @@ python -I src/fetch.py          # passo 1: scarica le pagine in data/raw/ (circa
 python -I src/extract.py        # passo 1: scrive i quattro file CSV del passo 1 in data/
 python -I src/bolli.py scarica  # passo 2: scarica gli elenchi UE degli stabilimenti (Italia e Spagna)
 python -I src/bolli.py cerca    # passo 2: abbina i bolli CE
-python -I src/vini.py           # vini: scarica la carta dell'enoteca, scrive vini.csv e cantine.csv
+python -I src/vini.py --dettagli  # vini: scarica la carta e le schede dei vini (circa un'ora), scrive vini.csv e cantine.csv
 python -I src/vini_box.py       # vini: confronta le box con la carta, scrive vini_nelle_box.csv
-python -I src/sito.py           # sito: rigenera docs/dati.json e docs/vini.json
+python -I src/controlla_link.py # link: controlla i link, scrive link_controllati.csv (ritocchi a mano in link_verifica_manuale.csv)
+python -I src/sito.py           # sito: cancella e riscrive tutte le pagine di docs/ (e docs/vini.json)
 ```
 
-`aziende.csv` non si rigenera con un programma: e' la ricerca a mano descritta sopra.
+`aziende.csv` non si rigenera con un programma: e' la ricerca a mano descritta sopra (dopo il controllo
+dei link si correggono a mano i link rotti). `docs/personale.js` (il logo, solo in locale) non si rigenera e non si pubblica.
 
 `fetch.py` aspetta 10 secondi fra una richiesta e l'altra (e' il `Crawl-delay` che lo shop
 dichiara in robots.txt; si cambia con `--pausa 1`), salta i file gia' scaricati (con `--forza` li
