@@ -6,6 +6,12 @@ progetto cerca di capire **chi** e **dove**, usando fonti pubbliche e dicendo se
 sicuri. Ci sono tre pezzi: lo shop online (passo 1), le aziende dietro gli indirizzi (passo 2) e
 la carta dei vini dell'enoteca.
 
+**Il sito: https://andreottiviii.github.io/peck-tracker/** — un catalogo da sfogliare come un
+negozio online, ma senza niente in vendita: per ogni prodotto dice chi lo fa e dove, per ogni
+bottiglia dell'enoteca cos'e'.
+
+Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita.
+
 ## Cosa trovi qui
 
 Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
@@ -104,9 +110,9 @@ prodotti Peck collegati) e `nota`.
 Non e' stato compilato da un programma: e' una ricerca sul web fatta a mano, **con una fonte per
 riga** (colonna `fonte`). Come leggere la colonna `certezza`:
 
-- `certa` (72 righe): una fonte mostra proprio quell'indirizzo o quel codice con quell'azienda.
+- `certa` (77 righe): una fonte mostra proprio quell'indirizzo o quel codice con quell'azienda.
 - `probabile` (7 righe): l'indizio e' forte ma indiretto.
-- `non trovata` (21 righe): non siamo riusciti a risalire all'azienda.
+- `non trovata` (16 righe): non siamo riusciti a risalire all'azienda.
 
 `shop_online = no` vuol dire solo che sul sito ufficiale non abbiamo trovato un negozio online:
 non e' una prova che non esista.
@@ -133,8 +139,10 @@ python -I src/bolli.py cerca     # abbina i codici di data/altre_origini.csv e s
 
 ### Limiti del passo 2
 
-- **21 righe senza risposta.** In parte perche' la ricerca ha esaurito il tempo a disposizione: si
-  possono riprovare.
+- **16 righe senza risposta**, anche dopo un secondo giro di ricerca: soprattutto aceto, olive,
+  olio e conserve, piu' i codici degli imbottigliatori. Le note dicono cosa e' stato provato. Per
+  chiuderle servirebbero una visura camerale per indirizzo, l'etichetta in mano o una richiesta
+  all'ICQRF (che assegna i codici degli imbottigliatori).
 - **Refusi di Peck negli indirizzi**: Legnano al posto di Legnago, Borgomanaro al posto di Borgomaro,
   Ortobello al posto di Orbetello.
 - **Non tutti i codici sono bolli sanitari**: "IT CN 9744" e "TV 1000" sono codici di chi
@@ -172,6 +180,21 @@ righe e l'Italia 1.233. Non salviamo foto ne' note di degustazione.
 - **E' una fotografia del 24 ottobre 2026.** I prezzi e i vini disponibili cambiano.
 - Il confronto con le box e' fatto per nome: va controllato a occhio dove la corrispondenza non e' esatta.
 
+## Il sito
+
+Sta in `docs/` ed e' pubblicato con GitHub Pages (ramo `main`, cartella `/docs`). Sezioni:
+Dispensa (194 prodotti), Box regalo (46 pagine "spacchettate"), Produttori (90), Enoteca
+(3.071 vini) e Come funziona. Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in
+`data/raw/` per i link alle foto) e scrive `docs/dati.json` e `docs/vini.json`: va rilanciato
+dopo ogni modifica ai CSV.
+
+**In `docs/` non ci sono foto.** Le immagini dei prodotti e delle bottiglie sono collegate
+direttamente ai server di Peck e di Winerim: il sito le mostra ma non le copia. La grafica si
+ispira all'atmosfera di Peck, senza logo ne' file grafici di Peck.
+
+Per vederlo sul computer: `python -I -m http.server 8000 --directory docs`, poi
+http://127.0.0.1:8000/ (aprire `index.html` direttamente non funziona).
+
 ## Come rifare tutto
 
 Servono Python 3.12, `requests` e `beautifulsoup4`. Dalla cartella `peck-tracker`, nell'ordine:
@@ -183,6 +206,7 @@ python -I src/bolli.py scarica  # passo 2: scarica gli elenchi UE degli stabilim
 python -I src/bolli.py cerca    # passo 2: abbina i bolli CE
 python -I src/vini.py           # vini: scarica la carta dell'enoteca, scrive vini.csv e cantine.csv
 python -I src/vini_box.py       # vini: confronta le box con la carta, scrive vini_nelle_box.csv
+python -I src/sito.py           # sito: rigenera docs/dati.json e docs/vini.json
 ```
 
 `aziende.csv` non si rigenera con un programma: e' la ricerca a mano descritta sopra.
