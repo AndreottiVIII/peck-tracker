@@ -170,6 +170,8 @@
     const urlWS = (t, a) => 'https://www.wine-searcher.com/find/' +
       norm(t).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').join('+') + (/^(19|20)\d\d$/.test(a || '') ? '/' + a : '');
 
+    const urlTannico = t => 'https://www.tannico.it/search?q=' + t.split(/\s+/).filter(Boolean).map(encodeURIComponent).join('+');
+
     function cardVino(w) {
       const pagina = radice + 'vino/' + w.d + '/';
       const fotoUrl = w.ph ? (w.ph.startsWith('http') ? w.ph : V.meta.prefisso_foto + w.ph) : '';
@@ -191,7 +193,9 @@
         `<p class="meta"><span class="col-b"><a href="${radice}cantina/${esc(w.cantina.id)}/">${esc(w.cantina.nome)}</a></span>` +
         `<span class="col-c">${esc([w.r, w.paese].filter(Boolean).join(' · '))}</span></p>` +
         `<div class="col-d"><p class="prezzo">${w.pr != null ? euro(w.pr) : '<span class="meta">Prezzo non indicato</span>'}</p>${elencoFormati}</div>` +
-        `<div class="bottoni">${ext(urlVivino(tt), 'Vivino')}${ext(urlWS(tt, w.a), 'Wine-Searcher')}</div>` +
+        `<div class="bottoni">${ext(urlVivino(tt), 'Vivino')}${ext(urlWS(tt, w.a), 'Wine-Searcher')}` +
+        (w.tn ? ext(w.tn, 'Tannico') + (w.ta ? `<span class="nota-tannico meta">su Tannico c’è l’annata ${esc(w.ta)}</span>` : '')
+              : ext(urlTannico(tt), 'Cerca su Tannico')) + `</div>` +
         `</div></article></li>`;
     }
 
@@ -205,7 +209,7 @@
       const pi = S.paese ? M.paesi.indexOf(S.paese) : -1;
       let arr = V.vini.filter(w =>
         (ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
-        (!can || w.kc.includes(can)) &&
+        (!can || w.kc.includes(can)) && (!S.tan || w.tn) &&
         (pmin == null || (w.pr != null && w.pr >= pmin)) && (pmax == null || (w.pr != null && w.pr <= pmax)) &&
         q.every(t => w.k.includes(t)));
       const senza = (x, y, f) => (x.pr == null) - (y.pr == null) || f(x, y);   // senza prezzo in fondo

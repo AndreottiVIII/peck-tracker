@@ -127,6 +127,12 @@ a.scheda:hover .nome, a.scheda:focus-visible .nome { text-decoration: underline;
 .foto img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
 a.scheda:hover .foto img { transform: scale(1.03); }
 .foto.bottiglia img { object-fit: contain; padding: 6%; }
+/* Disegni nostri della Dispensa (docs/disegni/*.svg): quadrati, sfondo uguale a --crema */
+.foto.disegno img { object-fit: contain; }
+.colonna-foto { max-width: 420px; }
+.vedi-foto { margin: .5rem 0 0; }
+.mini-disegno { display: block; width: 40px; height: 40px; margin-bottom: .2rem; }
+.cella-disegno { white-space: nowrap; }
 .segnaposto {
   display: block; width: 100%; height: 100%; background-color: var(--crema); background-repeat: no-repeat;
   background-position: center; background-size: 38%;
@@ -311,3 +317,5 @@ a.scheda:hover { background: var(--giallo-chiaro); }
   html { scroll-behavior: auto; }
   .foto img { transition: none; }
 }
+
+.nota-tannico { flex-basis: 100%; font-size: .8rem; margin: 0; }

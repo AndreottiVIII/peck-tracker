@@ -20,7 +20,8 @@ funziona sia su https://andreottiviii.github.io/peck-tracker/ sia alla radice di
     docs/come-funziona/
     docs/404.html, docs/sitemap.xml, docs/robots.txt, docs/vini.json (dati per i filtri dell'enoteca)
 
-I file scritti a mano e che questo programma NON tocca: docs/style.css, docs/app.js. Il file
+I file scritti a mano e che questo programma NON tocca: docs/style.css, docs/app.js e i disegni
+docs/disegni/*.svg (nostri; quale disegno va a quale prodotto lo decide DISEGNI_PAROLE). Il file
 docs/personale.js (il logo di Peck, solo per il computer del proprietario) e' nel .gitignore e non
 viene mai pubblicato.
 
@@ -100,6 +101,54 @@ CATEGORIE = [
 ]
 CATEGORIA_ALTRO = "altro"
 ORDINE_CATEGORIE = [c for c, _ in CATEGORIE] + [CATEGORIA_ALTRO]
+
+# ---------------------------------------------------------------------------
+# Disegni della Dispensa: docs/disegni/<nome>.svg, disegnati a mano per questo sito (sono nostri).
+# Quasi nessun prodotto ha una foto tutta sua (Peck mostra la foto della box), e la foto della
+# box non fa capire che cosa sia il prodotto: al suo posto c'e' un disegno. Si sceglie cosi':
+#   1. DISEGNI_PAROLE: la prima riga che ha una parola nel nome vince (stesse regole di
+#      CATEGORIE: nome in minuscolo, una parola che inizia con ^ vale solo all'inizio del nome);
+#   2. se nessuna parola va bene, il disegno della categoria (DISEGNO_CATEGORIA).
+# I prodotti con una foto propria di Peck (le pagine "singolo": panettoni, pandoro, veneziana,
+# salmone, frutta disidratata) tengono la foto. Le pagine delle Box regalo usano sempre le foto.
+# L'ordine conta: "biscotti al caramello" sono biscotti, "gelatine panettone al rum" sono
+# caramelle, "taralli al pomodoro" sono taralli (biscotti), "torrone ricoperto di cioccolato"
+# e' torrone, "salametto al cioccolato" e' cioccolato, "amarena tartufata" e' un dolce al
+# cioccolato (non tartufo), "noci e miele" e' frutta secca (per questo "^miele").
+# ---------------------------------------------------------------------------
+DISEGNI_PAROLE = [
+    ("biscotti", ["biscott", "krumiri", "baci di dama", "amaretti", "taralli"]),
+    ("caramelle", ["caramell", "gelatine", "marrons gla"]),
+    ("panettone", ["panettone", "pandoro", "veneziana"]),
+    ("torrone", ["torron", "panforte"]),
+    ("crema", ["zabaione", "^crema", "burro"]),
+    ("praline", ["praline", "gianduiotti", "tartufini", "marroncini", "rondelle", "moneta", "tartufat"]),
+    ("tavoletta", ["tavolett", "salametto al cioccolato"]),
+    ("prosciutto", ["prosciutto", "jamón", "paleta"]),
+    ("pomodoro", ["pomodor", "passata", "ragù"]),
+    ("marmellata", ["confettur", "marmellat", "^miele", "mostarda"]),
+    ("sottolio", ["peperon"]),
+    ("legumi", ["^riso", "lenticchie", "legumi"]),
+]
+DISEGNO_CATEGORIA = {
+    "dolci e lievitati": "biscotti", "cioccolato": "tavoletta", "pasta e riso": "pasta",
+    "salumi": "salame", "formaggi": "formaggio", "conserve e sottoli": "sottolio",
+    "olio e aceto": "olio-aceto", "pesce": "pesce", "tè e caffè": "te-caffe",
+    "vini e spumanti": "vino", "distillati": "distillato", "frutta secca": "frutta-secca",
+    CATEGORIA_ALTRO: "legumi",
+}
+# Che cosa mostra ogni disegno (testo alternativo per chi non vede l'immagine).
+DISEGNI_NOMI = {
+    "panettone": "un panettone", "biscotti": "biscotti", "torrone": "un torrone",
+    "caramelle": "caramelle incartate", "crema": "un vasetto di crema con il cucchiaino",
+    "tavoletta": "una tavoletta di cioccolato", "praline": "una scatola di cioccolatini",
+    "pasta": "pasta secca", "legumi": "un sacco di legumi", "salame": "un salame",
+    "prosciutto": "un prosciutto", "formaggio": "una forma di formaggio",
+    "sottolio": "un vaso di verdure sott’olio", "pomodoro": "un pomodoro",
+    "marmellata": "un vasetto di marmellata", "olio-aceto": "una bottiglia d’olio e una d’aceto",
+    "pesce": "un pesce", "te-caffe": "una tazza di tè o caffè", "vino": "una bottiglia di vino",
+    "distillato": "una bottiglia di distillato", "frutta-secca": "frutta secca",
+}
 
 # Stati di "quanto siamo sicuri" (dal piu' sicuro al meno sicuro).
 CERTA, PROBABILE, PECK, NON_TROVATA, NESSUNA = "certa", "probabile", "peck", "non trovata", "nessuna"
@@ -258,16 +307,26 @@ def foto_pagina(slug_pagina):
 # Categorie
 # ---------------------------------------------------------------------------
 
+def ha_parola(n, parole):
+    """True se il nome (gia' in minuscolo) contiene una delle parole (^ = all'inizio)."""
+    return any(n.startswith(p[1:]) if p.startswith("^") else p in n for p in parole)
+
+
 def categoria_di(nome):
     n = nome.lower()
     for cat, parole in CATEGORIE:
-        for p in parole:
-            if p.startswith("^"):
-                if n.startswith(p[1:]):
-                    return cat
-            elif p in n:
-                return cat
+        if ha_parola(n, parole):
+            return cat
     return CATEGORIA_ALTRO
+
+
+def disegno_di(nome, categoria):
+    """Il disegno di docs/disegni/ per un prodotto (vedi DISEGNI_PAROLE)."""
+    n = nome.lower()
+    for disegno, parole in DISEGNI_PAROLE:
+        if ha_parola(n, parole):
+            return disegno
+    return DISEGNO_CATEGORIA.get(categoria, DISEGNO_CATEGORIA[CATEGORIA_ALTRO])
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +492,10 @@ def costruisci_cibo():
             e["foto"], e["foto_tipo"], e["foto_da"] = piccola["foto"], "box", piccola["nome"]
         else:
             e["foto"], e["foto_tipo"], e["foto_da"] = "", "", ""
+    # --- disegno: per tutti quelli senza una foto propria (vedi DISEGNI_PAROLE)
+    for nome in ordine:
+        e = elem[nome]
+        e["disegno"] = "" if e["foto_tipo"] == "prodotto" else disegno_di(nome, e["categoria"])
 
     # --- province mancanti (comune -> provincia dagli altri dati)
     comune_prov = {}
@@ -615,6 +678,7 @@ def costruisci_cibo():
             "id": e["id"], "nome": e["nome"], "nome_originale": e["nome_originale"],
             "categoria": e["categoria"], "stato": e["stato"], "regioni": e["regioni"],
             "foto": e["foto"], "foto_tipo": e["foto_tipo"], "foto_da": e["foto_da"],
+            "disegno": e["disegno"],
             "box": [id_box[u] for u in e["box"] if u in id_box], "origini": e["origini"],
         })
     id_el = {n: elem[n]["id"] for n in ordine}
@@ -646,6 +710,7 @@ def costruisci_cibo():
         "approssimati": aziende.approssimati,
         "foto_box": sum(1 for b in box_out if b["foto"]),
         "foto_elementi": Counter(d["foto_tipo"] or "nessuna" for d in dispensa),
+        "disegni": Counter(d["disegno"] or "(foto propria)" for d in dispensa),
         "box_conteggio_diverso": [(b["nome"], b["n_elementi"], b["n_elementi_dichiarati"])
                                   for b in box_out if b["n_elementi"] != b["n_elementi_dichiarati"]],
         "aziende_non_usate": [a["chiave"] for a in aziende.righe
@@ -711,8 +776,33 @@ def url_wine_searcher(termini, annata):
     return u
 
 
+def url_tannico_ricerca(termini):
+    return "https://www.tannico.it/search?q=" + "+".join(quote(p, safe="") for p in termini.split())
+
+
+def carica_tannico():
+    """id vino -> (url, nota_annata) per i vini con scheda su Tannico (esatta o annata diversa).
+    nota_annata e' "" se l'annata e' quella giusta. Gli altri vini non compaiono: per loro il
+    bottone apre la ricerca. Il file e' prodotto da src/tannico.py."""
+    try:
+        righe = leggi_csv("tannico")
+    except FileNotFoundError:
+        return {}
+    out = {}
+    for t in righe:
+        if t["corrispondenza"] == "esatta" and t["url_tannico"]:
+            out[t["id"]] = (t["url_tannico"], "")
+        elif t["corrispondenza"] == "annata diversa" and t["url_tannico"]:
+            m = re.search(r"(?:19|20)\d\d", t["titolo_tannico"] or "")
+            if not m:  # il titolo a volte non ha l'anno, l'indirizzo si' (...-2022)
+                m = re.search(r"(?<=-)(?:19|20)\d\d(?=-|$)", t["url_tannico"].rstrip("/"))
+            out[t["id"]] = (t["url_tannico"], m.group(0) if m else "un’altra annata")
+    return out
+
+
 def costruisci_vini(box_per_nome):
     righe = leggi_csv("vini")
+    tannico = carica_tannico()
     cantine_csv = leggi_csv("cantine")
     nelle_box = leggi_csv("vini_nelle_box")
 
@@ -761,6 +851,10 @@ def costruisci_vini(box_per_nome):
                 sl = sl[:50].rsplit("-", 1)[0] if "-" in sl[:50] else sl[:50]
             w["d"] = f"{r['id']}-{sl}"                                    # cartella della pagina
             w["tt"] = termini_vino(r["cantina"], r["nome"])               # parole per Vivino / Wine-Searcher
+            if r["id"] in tannico:                                        # scheda Tannico (altrimenti: ricerca)
+                w["tn"], w["ta"] = tannico[r["id"]]
+                if not w["ta"]:
+                    del w["ta"]
             # profilo di degustazione (0-5): [(nome, valore)] solo per quelli indicati
             prof = [(nome, intero(r.get(col))) for col, nome in ATTRIBUTI_VINO]
             prof = [(n, v) for n, v in prof if v is not None]
@@ -849,7 +943,7 @@ def costruisci_vini(box_per_nome):
 
 def json_vini(vini):
     """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
-    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l")
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta")
     return {
         "meta": vini["meta"],
         "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
@@ -958,6 +1052,15 @@ def foto_html(url, alt, tipo="cibo", etichetta=""):
            f'referrerpolicy="no-referrer" data-ph="{tipo}">')
     et = f'<span class="etic-foto">{H(etichetta)}</span>' if etichetta else ""
     return f'<div class="{classe}">{img}{et}</div>'
+
+
+def immagine_cibo(it, r):
+    """Il disegno nostro (docs/disegni/) se il prodotto non ha una foto propria, se no la foto di Peck."""
+    d = it.get("disegno")
+    if not d:
+        return foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck")
+    return (f'<div class="foto disegno"><img src="{r}disegni/{d}.svg" width="200" height="200" '
+            f'alt="Disegno: {H(DISEGNI_NOMI.get(d, d))}" loading="lazy" decoding="async"></div>')
 
 
 def pulsante(url, testo, classe="bottone secondario piccolo"):
@@ -1174,14 +1277,13 @@ def prepara_cibo(dispensa, box, produttori):
 
 def voce_prodotto(it, az, r):
     chi, dove, stato = chi_fa(it, az)
-    et = "Foto della box" if it["foto_tipo"] == "box" else ""
     regioni = "|" + "|".join(it["regioni"]) + "|"
     province = "|" + "|".join(sorted({o["provincia"] for o in it["origini"] if o["provincia"]})) + "|"
     dove_html = f'<span class="col-c">{H(dove)}</span>' if dove else '<span class="col-c"></span>'
     return (f'<li class="it" data-k="{H(it["k"])}" data-c="{H(it["categoria"])}" data-g="{H(regioni)}" '
             f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}">'
             f'<a class="scheda" href="{r}prodotto/{it["id"]}/">'
-            f'{foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck", etichetta=et)}'
+            f'{immagine_cibo(it, r)}'
             f'<div class="corpo"><div class="col-a"><span class="cat">{H(cap(it["categoria"]))}</span>'
             f'<p class="nome">{H(it["nome"])}</p></div>'
             f'<p class="meta"><span class="col-b">{chi}</span>{dove_html}</p>'
@@ -1282,14 +1384,19 @@ def pagina_prodotto(it, az, boxes, r):
         blocchi.append(f'<div class="origine"><p class="etichetta">{H(etichetta)}</p>{frase}'
                        + (f'<dl class="dati">{dl}</dl>' if dl else "") + nota + riq + "</div>")
     in_box = [boxes[b] for b in it["box"] if b in boxes]
-    nota_foto = (f'<p class="meta">Peck non mostra una foto di questo prodotto da solo: quella a fianco è della box «{H(it["foto_da"])}».</p>'
-                 if it["foto_tipo"] == "box" else "")
+    nota_foto = ('<p class="meta">Peck non mostra una foto di questo prodotto da solo: il disegno è nostro.</p>'
+                 if it["disegno"] else "")
+    vedi_foto = ""
+    if it["disegno"] and any(boxes[b]["foto"] for b in it["box"] if b in boxes):
+        testo = ("Vedi la foto della box che lo contiene" if len(in_box) == 1
+                 else "Vedi la foto delle box che lo contengono")
+        vedi_foto = f'<p class="meta vedi-foto"><a href="#box">{testo}</a></p>'
     piu = ('<span class="meta"> Peck indica più di un luogo: sono tutti qui sotto.</span>' if len(it["origini"]) > 1 else "")
     chi, dove, stato = chi_fa(it, az)
     corpo = f"""{briciole(r, ("Dispensa", "dispensa/"), (it["nome"], None))}
 <article>
 <div class="dettaglio">
-{foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck", etichetta="Foto della box" if it["foto_tipo"] == "box" else "")}
+<div class="colonna-foto">{immagine_cibo(it, r)}{vedi_foto}</div>
 <div>
 <p class="etichetta">{H(cap(it["categoria"]))}</p>
 <h1>{H(it["nome"])}</h1>
@@ -1301,7 +1408,7 @@ def pagina_prodotto(it, az, boxes, r):
 <section class="sezione"><h2>Chi lo fa e dove</h2>
 {"".join(blocchi) if blocchi else "<p>Nessuna indicazione.</p>"}
 </section>
-<section class="sezione"><h2>{"Dove lo trovi su Peck" if len(in_box) == 1 else f"Lo trovi in {len(in_box)} pagine di Peck"}</h2>
+<section class="sezione" id="box"><h2>{"Dove lo trovi su Peck" if len(in_box) == 1 else f"Lo trovi in {len(in_box)} pagine di Peck"}</h2>
 <ul class="griglia">{"".join(f"<li>{scheda_box_corta(b, r)}</li>" for b in in_box)}</ul>
 <p class="meta" style="margin-top:1rem">Le pagine qui sopra sono le nostre; da ognuna puoi andare alla pagina originale di Peck.</p>
 </section>
@@ -1472,7 +1579,18 @@ def bottoni_punteggi(w, classe="bottone secondario piccolo"):
     return (f'<a class="{classe}" href="{H(url_vivino(w["tt"]))}" target="_blank" rel="noopener noreferrer">'
             f'Vivino{sr_nuova_scheda()}</a>'
             f'<a class="{classe}" href="{H(url_wine_searcher(w["tt"], w["a"]))}" target="_blank" rel="noopener noreferrer">'
-            f'Wine-Searcher{sr_nuova_scheda()}</a>')
+            f'Wine-Searcher{sr_nuova_scheda()}</a>'
+            + bottone_tannico(w, classe))
+
+
+def bottone_tannico(w, classe):
+    if "tn" in w:
+        a = f'<a class="{classe}" href="{H(w["tn"])}" target="_blank" rel="noopener noreferrer">Tannico{sr_nuova_scheda()}</a>'
+        if "ta" in w:
+            a += f'<span class="nota-tannico meta">su Tannico c’è l’annata {H(w["ta"])}</span>'
+        return a
+    return (f'<a class="{classe}" href="{H(url_tannico_ricerca(w["tt"]))}" target="_blank" rel="noopener noreferrer">'
+            f'Cerca su Tannico{sr_nuova_scheda()}</a>')
 
 
 def url_foto_vino(w):
@@ -1517,6 +1635,7 @@ def pagina_enoteca(V):
         'min="0" step="1" inputmode="numeric" placeholder="da"></div>'
         '<div class="campo"><label for="f-pmax">Prezzo fino a (€)</label><input type="number" id="f-pmax" name="pmax" '
         'min="0" step="1" inputmode="numeric" placeholder="fino a"></div>' +
+        ctl_spunta("tan", "Su Tannico", "") +
         ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
                                      ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia")],
                    modo="ord", vuoto="Nome"))
@@ -1564,7 +1683,7 @@ def pagina_cantina(c, boxes, r):
 {('<p class="meta">Nota: ' + H(c["nota"]) + "</p>") if c["nota"] else ""}
 {box_html}
 <section class="sezione"><h2>Tutte le etichette ({len(vini)})</h2>
-<p class="meta">I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti: qui non copiamo punteggi.</p>
+<p class="meta">I bottoni Vivino, Wine-Searcher e Tannico aprono la scheda o una ricerca sui loro siti: qui non copiamo punteggi.</p>
 <ul class="griglia">{"".join(f"<li>{scheda_vino(w, r)}</li>" for w in vini)}</ul>
 </section>
 </article>"""
@@ -1662,7 +1781,7 @@ def pagina_vino(w, V, r, correlati):
 <dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo}</span> · {stock}</dd></dl>
 <div class="gruppo-bottoni">{bottoni_punteggi(w)}
 <a class="bottone piccolo" href="{H(link_winerim)}" target="_blank" rel="noopener noreferrer">Scheda completa in enoteca{sr_nuova_scheda()}</a></div>
-<p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino: da noi non ci sono punteggi.</p>
+<p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino, Tannico la scheda o una ricerca: da noi non ci sono punteggi.</p>
 </div>
 </div>
 {profilo}
@@ -1714,6 +1833,18 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
         for c, parole in CATEGORIE)
+    parole_disegno = dict(DISEGNI_PAROLE)
+    cat_disegno = defaultdict(list)
+    for c in ORDINE_CATEGORIE:
+        cat_disegno[DISEGNO_CATEGORIA[c]].append(cap(c))
+    ordine_disegni = list(dict.fromkeys([d for d, _ in DISEGNI_PAROLE] + list(DISEGNO_CATEGORIA.values())))
+    righe_disegni = "".join(
+        f'<tr><td class="cella-disegno"><img class="mini-disegno" src="../disegni/{d}.svg" width="40" height="40" '
+        f'alt="Disegno: {H(DISEGNI_NOMI[d])}">{H(cap(d.replace("te-caffe", "tè e caffè").replace("-", " e " if d == "olio-aceto" else " ")))}</td><td>'
+        + H(", ".join((f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»")
+                      for p in parole_disegno.get(d, [])) or "—")
+        + f"</td><td>{H(', '.join(cat_disegno.get(d, [])) or '—')}</td></tr>"
+        for d in ordine_disegni)
     li_csv = "".join(f'<li><a href="{REPO}/blob/main/data/{n}.csv" target="_blank" rel="noopener noreferrer">data/{n}.csv{sr_nuova_scheda()}</a></li>'
                      for n in csv_nomi)
     link_ok = sum(n for (campo, e), n in LINK.conteggi.items() if e == "ok")
@@ -1735,6 +1866,8 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li><strong>Le aziende. </strong>Per ogni indirizzo, bollo CE o produttore nominato abbiamo cercato a mano, sul web, chi c’è dietro. Ogni riga ha la sua fonte (registri delle imprese, siti ufficiali, gli elenchi europei degli stabilimenti riconosciuti). Non è un lavoro fatto da un programma.</li>
 <li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
 <li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì.</li>
+<li><strong>Tannico. </strong>I link a Tannico vengono dal catalogo pubblico dei prodotti di Tannico, abbinato per nome ai nostri vini: {sum(1 for w in V['vini'] if 'tn' in w)} link diretti alla scheda (controllati a campione); per tutti gli altri il bottone «Cerca su Tannico» apre una ricerca sul loro sito.</li>
+<li><strong>Prezzi e punteggi di Tannico. </strong>Non copiamo né prezzi né punteggi di Tannico: il bottone porta solo al loro sito.</li>
 </ul>
 
 <h2>Quanto siamo sicuri</h2>
@@ -1757,7 +1890,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li>Il bollo CE dice dove sta lo stabilimento, non di chi è: l’azienda va cercata negli elenchi. Alcuni codici non sono bolli sanitari.</li>
 <li>Le righe “non trovata” sono dove la ricerca non è arrivata; si possono riprovare. “Nessuno shop online” vuol dire solo che non l’abbiamo trovato sul sito ufficiale.</li>
 <li>I testi di Peck hanno refusi (per esempio “Ortobello” per “Orbetello”). Le frasi sono copiate com’erano; dove due scritture indicano chiaramente lo stesso posto, le abbiamo unite.</li>
-<li>Alcuni prodotti non hanno una foto tutta loro: usiamo quella della box più piccola in cui compaiono e lo scriviamo sulla foto.</li>
+<li>Quasi nessun prodotto della Dispensa ha una foto tutta sua: Peck mostra solo la foto della box. Al suo posto c’è un nostro disegno, scelto in base al nome; la foto della box si vede nella pagina della box.</li>
 <li>Nell’enoteca l’intestazione della carta parla di 1.005 cantine, ma l’elenco pubblico ne mostra {M["n_cantine"]} ({num(M["n_vini"])} vini). Non sappiamo perché: forse sono vini archiviati o nascosti.</li>
 <li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
 <li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
@@ -1767,7 +1900,12 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <p>Le categorie dei prodotti sono decise da un programma che cerca alcune parole nel nome del prodotto: la prima categoria che trova vince. Non è una classificazione ufficiale e qualche prodotto può finire nella categoria sbagliata. Le parole sono queste (il resto va in «altro»):</p>
 <div class="tab-scorri"><table class="tab"><thead><tr><th>Categoria</th><th>Parole cercate nel nome</th></tr></thead><tbody>{righe_cat}</tbody></table></div>
 
+<h2>Come sono scelti i disegni</h2>
+<p>I prodotti senza una foto tutta loro hanno un disegno. Anche qui decide un programma: cerca nel nome le parole qui sotto (vince la prima riga che trova); se non ne trova, usa il disegno della categoria. Chi ha una foto propria di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tiene la foto.</p>
+<div class="tab-scorri"><table class="tab"><thead><tr><th>Disegno</th><th>Parole cercate nel nome</th><th>Categoria</th></tr></thead><tbody>{righe_disegni}</tbody></table></div>
+
 <h2>Foto, caratteri e riservatezza</h2>
+<p>I disegni della Dispensa sono nostri; le foto sono quelle delle pagine di Peck.</p>
 <p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (shop.peck.it) e di Winerim. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
 
 <h2>Dati e codice</h2>
@@ -1899,6 +2037,10 @@ def main():
     print("stato degli elementi:", st["stati_elementi"])
     print("categorie:", st["categorie"])
     print("foto elementi:", dict(st["foto_elementi"]), " foto box:", st["foto_box"], "/", st["box"])
+    print("disegni della dispensa:", dict(st["disegni"].most_common()))
+    mancanti = sorted(d for d in st["disegni"] if d in DISEGNI_NOMI and not (DOCS / "disegni" / f"{d}.svg").exists())
+    if mancanti:
+        print("ATTENZIONE, disegni che mancano in docs/disegni/:", mancanti)
     if st["approssimati"]:
         print("abbinamenti approssimati (da controllare):")
         for a, b in sorted(set(st["approssimati"])):

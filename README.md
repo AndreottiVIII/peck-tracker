@@ -240,6 +240,14 @@ I bottoni **Vivino** e **Wine-Searcher** di ogni vino aprono una *ricerca* sui l
 (`vivino.com/search/wines?q=<cantina + nome>` e `wine-searcher.com/find/<parole+unite>/<annata>`):
 non copiamo punteggi.
 
+Il bottone **Tannico** viene da `data/tannico.csv` (prodotto da `src/tannico.py`, che scarica il catalogo
+pubblico di Tannico e lo abbina ai vini per nome). Corrispondenza `esatta`: bottone «Tannico» con il link
+alla scheda; `annata diversa`: stesso bottone con la nota «su Tannico c'e' l'annata ...» (l'anno si legge
+da `titolo_tannico`); `da controllare` e `nessuna`: bottone «Cerca su Tannico» che apre la ricerca
+(`tannico.it/search?q=<cantina + nome>`, stesse parole di Vivino). Nell'Enoteca c'e' il filtro «Su
+Tannico». Non copiamo prezzi ne' punteggi di Tannico. I link diretti stanno anche in `docs/vini.json`
+(chiavi `tn`, `ta`).
+
 Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in `data/raw/` per i link alle foto),
 **cancella le pagine generate e le riscrive tutte** (circa 4.200 pagine, 55 MB; circa un minuto): va
 rilanciato dopo ogni modifica ai CSV. Non tocca `docs/style.css` e `docs/app.js`, che sono scritti a
@@ -247,6 +255,15 @@ mano.
 
 **In `docs/` non ci sono foto.** Le immagini dei prodotti e delle bottiglie sono collegate
 direttamente ai server di Peck e di Winerim: il sito le mostra ma non le copia.
+
+**I disegni della Dispensa sono nostri** (`docs/disegni/*.svg`, 21 illustrazioni scritte a mano in
+SVG, nei colori del sito). Quasi nessun prodotto ha una foto tutta sua (Peck mostra la foto della box,
+che non fa capire che cosa sia il prodotto), quindi nella Dispensa e nelle pagine prodotto c'e' un
+disegno; la pagina prodotto ha il link "Vedi la foto delle box che lo contengono". Il disegno lo sceglie
+`src/sito.py` in base alle parole nel nome (`DISEGNI_PAROLE`, poi il disegno della categoria in
+`DISEGNO_CATEGORIA`); la tabella completa e' anche in "Come funziona". I 10 prodotti con una foto propria
+di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tengono la foto, e le Box regalo
+usano sempre le foto di Peck. `sito.py` non cancella e non riscrive `docs/disegni/`.
 
 **Grafica.** Giallo `#FFCD45` e marrone `#5E4824` sono i due colori del CSS di peck.it
 (`--giallo-peck`, `--marrone-peck`); il carattere e' Raleway (quello di Peck, libero su Google Fonts,
@@ -273,6 +290,8 @@ python -I src/bolli.py cerca    # passo 2: abbina i bolli CE
 python -I src/vini.py --dettagli  # vini: scarica la carta e le schede dei vini (circa un'ora), scrive vini.csv e cantine.csv
 python -I src/vini_box.py       # vini: confronta le box con la carta, scrive vini_nelle_box.csv
 python -I src/controlla_link.py # link: controlla i link, scrive link_controllati.csv (ritocchi a mano in link_verifica_manuale.csv)
+python -I src/tannico.py scarica  # Tannico: scarica il catalogo pubblico
+python -I src/tannico.py abbina   # Tannico: abbina i vini, scrive tannico.csv
 python -I src/sito.py           # sito: cancella e riscrive tutte le pagine di docs/ (e docs/vini.json)
 ```
 
