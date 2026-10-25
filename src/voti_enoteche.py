@@ -56,9 +56,19 @@ ENOTECHE = {
     "zachys": ("www.zachys.com", 3.0, UA_DICHIARATO),
     "xtrawine": ("www.xtrawine.com", 3.0, UA_BROWSER),
     "bbr": ("www.bbr.com", 10.0, UA_BROWSER),
+    # secondo giro (26/10): negozi con punteggi strutturati nella scheda; tutti con robots.txt letto e senza divieti per noi
+    "frw": ("www.frw.co.uk", 3.0, UA_BROWSER),            # Fine+Rare: ClaudeBot/anthropic-ai/Claude-* espressamente Allow
+    "jb": ("www.justerinis.com", 3.0, UA_BROWSER),
+    "vinatis": ("www.vinatis.it", 3.0, UA_BROWSER),
+    "farr": ("www.farrvintners.com", 3.0, UA_BROWSER),
+    "idealwine": ("www.idealwine.com", 3.0, UA_BROWSER),
+    "moev": ("www.moevenpick-wein.com", 3.0, UA_BROWSER),
 }
+NUOVE = ("frw", "jb", "vinatis", "farr", "idealwine", "moev")
 NOMI_FONTE = {"millesima": "Millesima", "callmewine": "Callmewine",
-              "zachys": "Zachys", "xtrawine": "Xtrawine", "bbr": "Berry Bros & Rudd"}
+              "zachys": "Zachys", "xtrawine": "Xtrawine", "bbr": "Berry Bros & Rudd",
+              "frw": "Fine+Rare", "jb": "Justerini & Brooks", "vinatis": "Vinatis", "farr": "Farr Vintners",
+              "idealwine": "iDealwine", "moev": "Mövenpick Wein"}
 MAX_DISTANZA_ANNATA = 2
 CAMPI = ["id", "fonte", "url", "critico", "voto", "scala", "annata_fonte", "litri_fonte", "corrispondenza",
          "data_raccolta"]
@@ -180,7 +190,7 @@ def bbr_sitemap():
 
 def scarica_sitemap():
     for nome, (host, pausa, ua) in ENOTECHE.items():
-        if nome == "bbr":      # solo nella sua finestra oraria: vedi bbr_sitemap()
+        if nome == "bbr" or nome in NUOVE:      # bbr solo nella sua finestra oraria (bbr_sitemap); le nuove: sitemap_nuove()
             continue
         d = RAW / nome
         d.mkdir(parents=True, exist_ok=True)
@@ -326,7 +336,7 @@ def stesso_vino_slug(v, alts, testo_slug):
 
 
 def abbina_enoteca(nome, vini, prezzo):
-    slugs = [s for s in (Slug(nome, u) for u in lista_url(nome)) if s.ok]
+    slugs = costruisci_slugs(nome)
     idx = defaultdict(list)
     for i, s in enumerate(slugs):
         for w in s.tok:
@@ -368,10 +378,10 @@ def abbina_enoteca(nome, vini, prezzo):
     return out
 
 
-def abbina():
+def abbina(solo=None):
     vini, prezzo = VA.leggi_vini()
     print(len(vini), "vini Peck")
-    for nome in ENOTECHE:
+    for nome in (solo or [n for n in ENOTECHE if n not in NUOVE]):
         if nome == "bbr" and not (RAW / "bbr" / "sitemap.xml").exists():
             continue
         righe = abbina_enoteca(nome, vini, prezzo)
@@ -390,7 +400,8 @@ def abbina():
 
 # ---------------------------------------------------------------- scarico delle schede candidate
 def nome_file(url):
-    u = urllib.parse.urlsplit(url).path.strip("/")
+    sp = urllib.parse.urlsplit(url)
+    u = sp.path.strip("/") + (("_" + sp.query) if sp.query else "")
     return re.sub(r"[^A-Za-z0-9._-]+", "_", u)[:180] + ".html"
 
 
@@ -789,6 +800,570 @@ ESTRATTORI = {"bbr": estrai_bbr, "millesima": estrai_millesima, "callmewine": es
               "zachys": estrai_zachys, "xtrawine": estrai_xtrawine}
 
 
+# ---------------------------------------------------------------- secondo giro: frw, jb, vinatis, farr, idealwine
+class Rec:
+    """Un indirizzo del negozio gia' ridotto a (testo del nome, annata, ml), come Slug ma senza dipendere dall'indirizzo."""
+
+    def __init__(self, url, testo, anno, ml):
+        self.url = url
+        self.testo = testo
+        self.anno = anno
+        self.ml = ml
+        self.ok = bool(testo) and anno is not None
+        self.tok = VA.T.tokens(testo) if self.ok else set()
+
+
+SOLO_CONFEZIONI = re.compile(r"\b(cofanetto|coffret|pack|set|duo|trio|lotto|degustazione|assortimento|calendario|"
+                             r"box|mixed|case|collection|verticale|vertical|caisse|ensemble|panachage|horizontale)\b")
+
+
+def _anno_unico(t):
+    anni = set(re.findall(r"(?<![0-9])((?:19|20)\d\d)(?![0-9])", t))
+    return anni.pop() if len(anni) == 1 else (None if anni else "NV")
+
+
+def recs_frw():
+    t = (RAW / "frw" / "sitemap-products.xml").read_text(encoding="utf-8")
+    out = []
+    for u in re.findall(r"<loc>([^<]+)</loc>", t):
+        slug = u.rstrip("/").rsplit("/", 1)[1]
+        m = re.match(r"(nv|(?:19|20)\d\d)-(.+)", slug)
+        if not m:
+            continue
+        testo = m.group(2).replace("-", " ")
+        if SOLO_CONFEZIONI.search(T.norm(testo)):
+            continue
+        out.append(Rec(u, testo, "NV" if m.group(1) == "nv" else m.group(1), T.formato_esplicito(testo) or 750))
+    return out
+
+
+def recs_jb():
+    t = (RAW / "jb" / "product_sitemap.xml").read_text(encoding="utf-8")
+    urls = [htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", t)]
+    figli = set()
+    for u in urls:
+        p = u.split("justerinis.com/", 1)[1].split("/")
+        if len(p) == 6:
+            figli.add("/".join(p[:5]))
+    out = []
+    for u in urls:
+        p = u.split("justerinis.com/", 1)[1].split("/")
+        if p[0] != "fine-wines" or len(p) < 5 or p[1] in ("grape-varieties", "styles"):
+            continue
+        if len(p) == 6 and re.fullmatch(r"(?:19|20)\d\d", p[5]):
+            anno = p[5]
+        elif len(p) == 6 and p[5] in ("nv", "n-v"):
+            anno = "NV"
+        elif len(p) == 5 and "/".join(p) not in figli:
+            anno = "NV"
+        else:
+            continue
+        testo = (p[3] + " " + p[4]).replace("-", " ")
+        out.append(Rec(u, testo, anno, T.formato_esplicito(testo) or 750))
+    return out
+
+
+def recs_vinatis():
+    t = (RAW / "vinatis" / "prod_sitemap.xml").read_text(encoding="utf-8")
+    out = []
+    for u in re.findall(r"<loc><!\[CDATA\[([^\]]+)\]\]></loc>", t):
+        slug = u.rstrip("/").rsplit("/", 1)[1]
+        m = re.match(r"(\d+)-(.+)", slug)
+        if not m:
+            continue
+        testo = m.group(2).replace("-", " ")
+        if SOLO_CONFEZIONI.search(T.norm(testo)):
+            continue
+        anno = _anno_unico(testo)
+        if anno is None:
+            continue
+        out.append(Rec(u, testo, anno, T.formato_esplicito(testo) or 750))
+    return out
+
+
+def righe_farr(html_):
+    """Righe di una tabella di Farr Vintners -> dict(id, anno, nome, produttore, litri, ascii, punteggio).
+    Nell'elenco il nome e' un link a wine.php?wine=N; nella scheda la riga (una sola) non ha il link e id = ''."""
+    out = []
+    for tr in re.findall(r"<tr>(.*?)</tr>", html_, re.S):
+        tds = re.findall(r"<td([^>]*)>(.*?)</td>", tr, re.S)
+        if len(tds) < 14:
+            continue
+        va = re.search(r'<td align="center">((?:19|20)\d\d|N\.?V\.?)</td>', tr)
+        if not va:
+            continue
+        nascoste = [x[1] for x in tds if 'class="d-none"' in x[0]]
+        if len(nascoste) < 5:
+            continue
+        produttore, litri, _, _, ascii_ = nascoste[-5:]
+        mm = re.search(r'/wine\.php\?wine=(\d+)"[^>]*>(.*?)</a>', tr, re.S)
+        if mm:
+            id_, nome = mm.group(1), mm.group(2)
+        else:
+            id_ = ""
+            i_v = next(i for i, x in enumerate(tds) if "align=\"center\"" in x[0] and va.group(1) in x[1])
+            nome = tds[i_v + 1][1]
+        nome = re.sub(r"<[^>]+>", "", nome)
+        sc = re.search(r'<nobr>(\d+(?:[.,]\d+)?)(?:&nbsp;|\s)*([A-Za-z]*)</nobr></span></td>', tr)
+        try:
+            lt = float(litri)
+        except ValueError:
+            continue
+        out.append({"id": id_, "anno": "NV" if va.group(1).upper().startswith("N") else va.group(1),
+                    "nome": htmllib.unescape(nome).strip(), "produttore": htmllib.unescape(produttore).strip(),
+                    "litri": lt, "ascii": htmllib.unescape(ascii_).strip(), "punteggio": sc.group(0) if sc else ""})
+    return out
+
+
+def leggi_testo(f):
+    b = f.read_bytes()
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        return b.decode("cp1252", errors="replace")
+
+
+def recs_farr():
+    t = leggi_testo(RAW / "farr" / "winelist_all.html")
+    out, visti = [], set()
+    for r in righe_farr(t):
+        if not r["punteggio"] or r["id"] in visti:     # senza punteggio nell'elenco = niente critici nella scheda
+            continue
+        visti.add(r["id"])
+        testo = f"{r['nome']} {r['produttore']} {r['ascii']}"
+        out.append(Rec(f"https://www.farrvintners.com/wine.php?wine={r['id']}", testo, r["anno"],
+                       int(round(r["litri"] * 1000))))
+    return out
+
+
+def recs_moev():
+    t = (RAW / "moev" / "sitemap_ch_it.xml").read_text(encoding="utf-8")
+    out = []
+    for u in re.findall(r"<loc>([^<]+)</loc>", t):
+        m = re.fullmatch(r"https://www\.moevenpick-wein\.com/it/((?:19|20)\d\d|nv)-([a-z0-9-]+)\.html", u)
+        if not m:
+            continue
+        testo = m.group(2).replace("-", " ")
+        if SOLO_CONFEZIONI.search(T.norm(testo)):
+            continue
+        out.append(Rec(u, testo, "NV" if m.group(1) == "nv" else m.group(1), T.formato_esplicito(testo) or 750))
+    return out
+
+
+def costruisci_slugs(nome):
+    if nome == "frw":
+        return [r for r in recs_frw() if r.ok]
+    if nome == "jb":
+        return [r for r in recs_jb() if r.ok]
+    if nome == "vinatis":
+        return [r for r in recs_vinatis() if r.ok]
+    if nome == "farr":
+        return [r for r in recs_farr() if r.ok]
+    if nome == "idealwine":
+        return [r for r in recs_idealwine() if r.ok]
+    if nome == "moev":
+        return [r for r in recs_moev() if r.ok]
+    return [s for s in (Slug(nome, u) for u in lista_url(nome)) if s.ok]
+
+
+def sitemap_nuove():
+    """robots.txt e sitemap dei siti del secondo giro (3 s di pausa). Farr: una sola pagina, l'elenco completo
+    `winelist.php?show=all`. Le sitemap non sono ricompresse: si scaricano come sono."""
+    for nome in NUOVE:
+        host, pausa, ua = ENOTECHE[nome]
+        d = RAW / nome
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "robots.txt").write_bytes(prendi(f"https://{host}/robots.txt", ua))
+        time.sleep(pausa)
+    print("robots riletti; le sitemap sono gia' in data/raw/voti/<nome>/ (vedi JOURNAL)")
+
+
+def _mappa_persone(valori):
+    return {T.norm(x) for x in valori}
+
+
+P_ADVOCATE = _mappa_persone(["Robert Parker", "Lisa Perrotti-Brown", "William Kelley", "Monica Larner", "Luis Gutierrez",
+                             "Joe Czerwinski", "Kristaps Karklins", "Erin Brooks", "Mark Squires", "Jeannie Cho Lee MW wa"])
+P_VINOUS = _mappa_persone(["Antonio Galloni", "Josh Raynolds", "Stephen Tanzer", "Eric Guido", "Ian D'Agata",
+                           "Rebecca Gibb", "Nicolas Greinacher", "Joaquin Hidalgo", "Yohan Castaing"])
+P_SPECTATOR = _mappa_persone(["James Molesworth", "Bruce Sanderson", "Kim Marcus", "Alison Napjus", "James Laube",
+                              "Harvey Steiman", "Thomas Matthews", "MaryAnn Worobiec", "Aaron Romano", "Dr. Jim Gordon"])
+
+
+def critico_da(reviewer, pubblicazione="", data=""):
+    """Nome del critico come negli altri negozi: testate note con il loro nome (Robert Parker per The Wine Advocate,
+    Vinous (Persona)), le altre col nome della persona. None = non si sa chi sia (non si scrive)."""
+    r = re.sub(r"\s+", " ", htmllib.unescape(reviewer or "")).strip().rstrip(",")
+    pb = re.sub(r"\s+", " ", htmllib.unescape(pubblicazione or "")).strip()
+    nr, npb = T.norm(r), T.norm(pb)
+    tutto = nr + " " + npb
+    compatto = tutto.replace(" ", "")
+    if "wine advocate" in tutto or "robertparker" in compatto or nr in P_ADVOCATE:
+        return "Robert Parker"
+    if nr in ("neal martin", "jeb dunnuck") and not npb:
+        if nr == "jeb dunnuck":
+            return "Jeb Dunnuck"
+        if data and data[:4].isdigit():
+            return "Robert Parker" if int(data[:4]) < 2019 else "Vinous (Neal Martin)"
+        return None
+    if "vinous" in tutto or nr in P_VINOUS:
+        persona = r if r and "vinous" not in nr else ""
+        persona = {"Rebecca Gibb": "Rebecca Gibb MW"}.get(persona, persona)
+        return f"Vinous ({persona})" if persona else "Vinous"
+    if "jamessuckling" in compatto or nr == "james suckling":
+        return "James Suckling"
+    if "jancis" in tutto:
+        return "Jancis Robinson"
+    if "wine cellar insider" in tutto or nr.startswith("jeff leve"):
+        return "Jeff Leve (The Wine Cellar Insider)"
+    if "burghound" in compatto or nr in ("allen meadows", "burghound"):
+        return "Burghound"
+    if "decanter" in tutto:
+        return "Decanter"
+    if "wine spectator" in tutto or nr in P_SPECTATOR:
+        return "Wine Spectator"
+    if "wine enthusiast" in tutto:
+        return "Wine Enthusiast"
+    if "revue du vin" in tutto or nr in ("rvf", "la rvf"):
+        return "Revue du Vin de France"
+    if "bettane" in tutto:
+        return "Bettane+Desseauve"
+    if "jeb dunnuck" in tutto:
+        return "Jeb Dunnuck"
+    if "tim atkin" in tutto:
+        return "Tim Atkin"
+    if "jane anson" in tutto:
+        return "Jane Anson"
+    if "quarin" in tutto:
+        return "Jean-Marc Quarin"
+    if "gambero" in tutto:
+        return "Gambero Rosso"
+    if "falstaff" in tutto:
+        return "Falstaff"
+    if "andreas larsson" in tutto:
+        return "Andreas Larsson"
+    if "john gilman" in tutto:
+        return "John Gilman"
+    key = nr or npb
+    if key in NOMI_CRITICI:
+        return NOMI_CRITICI[key]
+    return r or pb or None
+
+
+def _pi_recente(candidati):
+    """[(data, critico, valore, scala)] -> un voto per critico: il piu' recente (a parita' il primo elencato)."""
+    best = {}
+    for i, (d, c, v, sc) in enumerate(candidati):
+        k = c
+        if k not in best or (d or "") > (best[k][0] or ""):
+            best[k] = (d, c, v, sc)
+    return [(c, v, sc) for d, c, v, sc in best.values()]
+
+
+def estrai_frw(t):
+    s = Scheda()
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', t, re.S)
+    if not m:
+        return s
+    p = json.loads(m.group(1))["props"]["pageProps"]["product"]
+    prod = ((p.get("parent") or {}).get("producer") or {}).get("name", "")
+    nome = p.get("name", "")
+    s.identita = f"{nome} {prod}"
+    ma = re.match(r"\s*((?:19|20)\d\d|NV)\b", nome)
+    s.anno = ma.group(1) if ma else None
+    info = json.loads(m.group(1))["props"]["pageProps"].get("productMarketInfo") or {}
+    try:
+        u = float(info.get("unitSize"))
+        s.ml = int(round(u * (10 if info.get("unit") == "cl" else 1 if info.get("unit") == "ml" else 1000)))
+    except (TypeError, ValueError):
+        s.ml = None
+    cand = []
+    for r in p.get("reviews") or []:
+        if r.get("productId") != p.get("_id") or r.get("scoreTo") is not None:
+            continue
+        crit = critico_da((r.get("reviewer") or {}).get("name", ""), "", r.get("date", ""))
+        sf, sc = r.get("scoreFrom"), r.get("scoreScale")
+        if not crit or sf is None or sc not in (20, 100):
+            continue
+        v = voce(crit, float(sf), str(int(sc)))
+        if v:
+            cand.append(((r.get("date") or "")[:10], v[0], v[1], v[2]))
+    s.voti = _pi_recente(cand)
+    return s
+
+
+def _array_json(u, chiave):
+    i = u.find(chiave)
+    if i < 0:
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(u[i + len(chiave):])
+    except ValueError:
+        return None
+    return obj
+
+
+def estrai_jb(t):
+    s = Scheda()
+    p = None
+    for mm in re.finditer(r'<script type="application/ld\+json">(.*?)</script>', t, re.S):
+        try:
+            d = json.loads(mm.group(1))
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("@type") == "Product":
+            p = d
+    if not p:
+        return s
+    marca = p.get("brand")
+    marca = marca.get("name", "") if isinstance(marca, dict) else (marca or "")
+    s.identita = f"{p.get('name', '')} {marca}"
+    modello = str(p.get("model") or "")
+    s.anno = modello if re.fullmatch(r"(19|20)\d\d", modello) else ("NV" if modello.upper() in ("NV", "N.V.", "") else None)
+    formati = set()
+    for o in p.get("offers") or []:
+        for mm in re.finditer(r"(\d+)\s*x\s*(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b", str(o.get("description", "")), re.I):
+            v = float(mm.group(2).replace(",", "."))
+            formati.add(int(round(v * (10 if mm.group(3).lower() == "cl" else 1 if mm.group(3).lower() == "ml" else 1000))))
+    s.ml = formati.pop() if len(formati) == 1 else None
+    u = t.replace('\\"', '"')
+    crit = _array_json(u, '"critics":') or []
+    cand = []
+    for c in crit:
+        if not isinstance(c, dict) or str(c.get("vintageName")) != modello:
+            continue
+        mm = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\+?\s*/\s*(100|20)\s*", str(c.get("scoreText", "")))
+        if not mm:
+            continue              # intervalli (92-94), assaggi da botte, voti su altre scale: non si usano
+        nome_c = critico_da(c.get("reviewer", ""), c.get("publication", ""), "")
+        if not nome_c:
+            continue
+        valore, _ = numero(mm.group(1))
+        v = voce(nome_c, valore, mm.group(2))
+        if v:
+            d = str(c.get("dateReviewed") or "")
+            dm = re.match(r"(\d\d)/(\d{4})", d)
+            cand.append((f"{dm.group(2)}-{dm.group(1)}" if dm else "", v[0], v[1], v[2]))
+    s.voti = _pi_recente(cand)
+    return s
+
+
+def estrai_vinatis(t):
+    s = Scheda()
+    p = _array_json(t, "var product_page_elastic = ")
+    if not isinstance(p, dict):
+        return s
+    s.identita = f"{p.get('name', '')} {p.get('manufacturer_name', '')}"
+    for o in p.get("other_products") or []:
+        if o.get("id") == p.get("id") and o.get("vintage"):
+            s.anno = str(o["vintage"])
+    if not s.anno:
+        s.anno = _anno_unico(p.get("name", ""))
+    try:
+        s.ml = int(round(float(p.get("contenance")) * 1000))
+    except (TypeError, ValueError):
+        s.ml = None
+    for r in (p.get("rewards") or {}).get("detail") or []:
+        mm = re.match(r"\s*(\d+(?:[.,]\d+)?)\s*/\s*(100|20)\s+(.+?)\s*$", str(r.get("legend", "")))
+        if not mm:
+            continue
+        nome_r = re.sub(r"(?i)^tasted by\s+", "", mm.group(3))
+        nome_r = re.sub(r"\s*\b(?:19|20)\d\d\b\s*$", "", nome_r).strip()
+        if re.search(r"(?i)concours|medagl|hachette|gilbert|preferito|guide(?!.*bettane)", nome_r):
+            continue
+        crit = critico_da("", nome_r)
+        if not crit:
+            continue
+        valore, _ = numero(mm.group(1))
+        v = voce(crit, valore, mm.group(2))
+        if v:
+            s.voti.append(v)
+    return s
+
+
+def estrai_farr(t):
+    s = Scheda()
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", t, re.S)
+    titolo = htmllib.unescape(re.sub(r"<[^>]+>", "", h1.group(1))).strip() if h1 else ""
+    righe = righe_farr(t)
+    r0 = righe[0] if righe else None
+    s.identita = f"{titolo} {r0['produttore'] if r0 else ''}"
+    if r0:
+        s.anno = r0["anno"]
+        s.ml = int(round(r0["litri"] * 1000))
+    cand = []
+    for mm in re.finditer(r'class="notranslate wine-score">([^<]*)</span>.*?<i>(.*?)<!--', t, re.S):
+        punteggio = htmllib.unescape(mm.group(1)).strip()
+        firma = htmllib.unescape(re.sub(r"<[^>]+>", "", mm.group(2))).strip()
+        if not re.fullmatch(r"\d+(?:[.,]\d+)?\+?", punteggio):
+            continue                           # intervalli (94-96) e simili: non si usano
+        parti = [x.strip() for x in firma.split(",")]
+        data = parti[-1] if len(parti) >= 3 and re.search(r"\d{4}$", parti[-1]) else ""
+        anno_d = re.search(r"\d{4}$", data)
+        mese = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
+                                            "september", "october", "november", "december"], 1)}
+        ym = ""
+        if anno_d:
+            mm2 = re.match(r"([A-Za-z]+)\s+\d{4}", data)
+            ym = f"{anno_d.group(0)}-{mese.get(mm2.group(1).lower(), 0):02d}" if mm2 else anno_d.group(0)
+        nome_r = parti[0]
+        pubbl = ", ".join(parti[1:-1]) if data else ", ".join(parti[1:])
+        crit = critico_da(nome_r, pubbl, ym)
+        if not crit:
+            continue
+        scala = "20" if "jancis" in T.norm(firma) else "100"
+        valore, _ = numero(punteggio)
+        v = voce(crit, valore, scala)
+        if v:
+            cand.append((ym, v[0], v[1], v[2]))
+    s.voti = _pi_recente(cand)
+    return s
+
+
+def estrai_moev(t):
+    s = Scheda()
+    mt = re.search(r"<title>(.*?)</title>", t, re.S)
+    titolo = htmllib.unescape(re.sub(r"\s+", " ", mt.group(1))).strip() if mt else ""
+    s.identita = titolo.split("|")[0].strip()
+    ma = re.match(r"\s*((?:19|20)\d\d|NV)\b", s.identita)
+    s.anno = ma.group(1) if ma else None
+    s.ml = T.formato_esplicito(s.identita)
+    td = re.search(r'data-id="mpw_ratings"[^>]*>(.*?)</td>', t, re.S)
+    if td:
+        for parte in re.sub(r"<[^>]+>", "", td.group(1)).split("|"):
+            parte = htmllib.unescape(parte).strip()
+            m = re.fullmatch(r"(.+?)\s+(\d+(?:[.,]\d+)?)\+?\s*/\s*(100|20)", parte)
+            if not m or T.norm(m.group(1)) in ("score", "mövenpick", "movenpick"):
+                continue                # intervalli (95-96), il «Score» del negozio: non si usano
+            crit = critico_da("", m.group(1))
+            if not crit:
+                continue
+            valore, _ = numero(m.group(2))
+            v = voce(crit, valore, m.group(3))
+            if v:
+                s.voti.append(v)
+    return s
+
+
+LOTTO_RX = re.compile(r"[A-Z]?\d+(?:-\d+)*-(\d+)-(bouteille|magnum|demi-bouteille|jeroboam|double-magnum)s?-(.+)", re.I)
+LOTTO_FR_RX = re.compile(r"/acheter-vin/[A-Z]?\d+(?:-\d+)*-1-(?:bouteille|magnum|demi-bouteille|jeroboam|double-magnum)-(.+)$", re.I)
+
+
+def recs_idealwine():
+    """Lotti singoli (1 bottiglia/1 magnum) dall'elenco ridotto urls_fr.txt; un solo indirizzo per (testo, annata, formato)."""
+    f = RAW / "idealwine" / "urls_fr.txt"
+    out, visti = [], set()
+    for u in f.read_text(encoding="utf-8").split():
+        m = re.search(r"/acheter-vin/([^/]+)$", u)
+        if not m:
+            continue
+        slug = urllib.parse.unquote(m.group(1))
+        m2 = LOTTO_RX.match(slug)
+        if not m2 or m2.group(1) != "1":
+            continue
+        testo = m2.group(3).replace("-", " ")
+        if SOLO_CONFEZIONI.search(T.norm(testo)):
+            continue
+        anno = _anno_unico(testo)
+        if anno is None:
+            continue
+        forma = m2.group(2).lower()
+        ml = T.formato_esplicito(testo) or {"magnum": 1500, "demi-bouteille": 375, "jeroboam": 3000,
+                                            "double-magnum": 3000}.get(forma, 750)
+        chiave = (T.norm(testo), anno, ml)
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        out.append(Rec(u, testo, anno, ml))
+    return out
+
+
+def sitemap_idealwine():
+    """Le sitemap `sitemap.xml/products/N.xml` (compresse in trasferimento, 3 s di pausa): si tengono solo gli
+    indirizzi francesi dei lotti da 1 bottiglia/1 magnum, uno per vino-annata-formato -> urls_fr.txt."""
+    import gzip
+    host, pausa, ua = ENOTECHE["idealwine"]
+    d = RAW / "idealwine"
+    rob = Robots((d / "robots.txt").read_text(encoding="utf-8", errors="replace"))
+    idx = (d / "sitemap.xml").read_text(encoding="utf-8")
+    locs = [htmllib.unescape(x) for x in re.findall(r"<loc>([^<]*/sitemap\.xml/products/\d+\.xml)</loc>", idx)]
+    fatte_f = d / "sitemap_fatte.txt"
+    fatte = set(fatte_f.read_text().split()) if fatte_f.exists() else set()
+    out_f = d / "urls_fr.txt"
+    visti = set()
+    for u in (out_f.read_text(encoding="utf-8").split() if out_f.exists() else []):
+        m = LOTTO_FR_RX.search(u)
+        if m:
+            visti.add(m.group(1))
+    for loc in locs:
+        if loc in fatte:
+            continue
+        if not rob.permesso(loc):
+            print("vietato", loc)
+            continue
+        rich = urllib.request.Request(loc, headers={"User-Agent": ua, "Accept-Encoding": "gzip",
+                                                    "Accept": "application/xml,text/xml,*/*"})
+        with urllib.request.urlopen(rich, timeout=180) as r:
+            dati = r.read()
+            if r.headers.get("Content-Encoding") == "gzip":
+                dati = gzip.decompress(dati)
+        testo = dati.decode("utf-8", errors="replace")
+        nuovi = []
+        for u in re.findall(r"<loc>(https://www\.idealwine\.com/fr/acheter-vin/[^<]+)</loc>", testo):
+            m = LOTTO_FR_RX.search(u)
+            if not m or m.group(1) in visti:
+                continue
+            visti.add(m.group(1))
+            nuovi.append(htmllib.unescape(u))
+        with open(out_f, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(nuovi) + ("\n" if nuovi else ""))
+        fatte.add(loc)
+        fatte_f.write_text("\n".join(sorted(fatte)), encoding="utf-8")
+        print(loc, len(nuovi), "indirizzi nuovi", flush=True)
+        time.sleep(pausa)
+    print("idealwine sitemap ok")
+
+
+NOTE_IDEALWINE = {   # campo di productVintage -> (critico, scala fissa o None = 100 se > 20, altrimenti 20)
+    "noteRobertParker": ("Robert Parker", "100"), "noteWineSpectator": ("Wine Spectator", "100"),
+    "noteDecanter": ("Decanter", "100"), "noteJamesSuckling": ("James Suckling", "100"),
+    "noteVinousAntonioGalloni": ("Vinous (Antonio Galloni)", "100"), "noteBurghoundBH": ("Burghound", "100"),
+    "noteQuarin": ("Jean-Marc Quarin", "100"), "noteJancisRobinson": ("Jancis Robinson", "20"),
+    "noteBettaneAndDesseauve": ("Bettane+Desseauve", None), "noteRVF": ("Revue du Vin de France", None),
+}
+
+
+def estrai_idealwine(t):
+    s = Scheda()
+    mt = re.search(r"<title>(.*?)</title>", t, re.S)
+    titolo = htmllib.unescape(re.sub(r"\s+", " ", mt.group(1))).strip() if mt else ""
+    titolo = re.sub(r"^(Acheter vin|Buy wine|Compra vino|Comprare vino)\s+", "", titolo)
+    s.identita = re.sub(r"\(lot:[^)]*\)", "", titolo).replace("(Domaine)", "").strip()
+    u = t.replace('\\"', '"')
+    pv = _array_json(t, '"productVintage":') or _array_json(u, '"productVintage":')
+    if isinstance(pv, dict):
+        s.anno = str(pv.get("year")) if pv.get("year") else None
+        for campo, (crit, scala) in NOTE_IDEALWINE.items():
+            raw = pv.get(campo)
+            if raw in (None, ""):
+                continue
+            valore, intervallo = numero(str(raw))
+            if valore is None or intervallo:
+                continue
+            sc = scala or ("100" if valore > 20 else "20")
+            v = voce(crit, valore, sc)
+            if v:
+                s.voti.append(v)
+    mm = re.search(r'"customVolume":(\d+)', u)
+    if mm:
+        s.ml = int(mm.group(1))
+    return s
+
+
+ESTRATTORI.update({"frw": estrai_frw, "jb": estrai_jb, "vinatis": estrai_vinatis, "farr": estrai_farr,
+                   "idealwine": estrai_idealwine, "moev": estrai_moev})
+
+
 def verifica_pagina(v, alts, riga, sch):
     """(corrispondenza, annata_fonte, litri) se la scheda e' davvero quel vino, altrimenti None."""
     a_peck = v["annata"] or "NV"
@@ -868,7 +1443,11 @@ if __name__ == "__main__":
     elif cmd == "bbr_sitemap":
         bbr_sitemap()
     elif cmd == "abbina":
-        abbina()
+        abbina(sys.argv[2:] or None)
+    elif cmd == "sitemap_nuove":
+        sitemap_nuove()
+    elif cmd == "idw_sitemap":
+        sitemap_idealwine()
     elif cmd == "estrai":
         estrai()
     elif cmd == "scarica" and len(sys.argv) > 2:

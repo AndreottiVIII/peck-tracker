@@ -2585,9 +2585,13 @@ def chip_testo(dp):
 def carica_confronti_cibo():
     """Tutte le righe di data/confronto/risultati_*.csv, tranne «non trovato» (non si mostra mai)."""
     out = []
+    sostituite = set()   # (file vecchio, nome_peck, url): righe corrette da un file piu' recente (es. risultati_8)
     for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv"))):
         with open(f, encoding="utf-8-sig", newline="") as fh:
             for r in csv.DictReader(fh):
+                if (r.get("sostituisce") or "").strip():
+                    sostituite.add((r["sostituisce"].strip(), (r["nome_peck"] or "").strip(),
+                                    ((r.get("sostituisce_url") or "") or (r["url_produttore"] or "")).strip()))
                 sim = (r.get("somiglianza") or "").strip().lower()
                 if sim not in SIM_PESO:
                     continue
@@ -2622,6 +2626,9 @@ def carica_confronti_cibo():
                         c["base"] = "per confezione"
                 c["confrontabile"] = c["dp"] is not None and c["p_peck"] is not None and c["p_prod"] is not None
                 out.append(c)
+    out = [c for c in out if (c["file"], c["nome_peck"], c["url"]) not in sostituite]
+    for i, c in enumerate(out):
+        c["ordine"] = i
     return out
 
 
