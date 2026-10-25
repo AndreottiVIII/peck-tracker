@@ -52,3 +52,6 @@ Le decisioni prese, con la data e il perche'. Si aggiunge in fondo, non si riscr
   l'etichetta "Foto della box"; nella pagina prodotto c'e' il link alla foto delle box.
 
 - 25 ottobre 2026: bottoni Tannico sui vini (pagine vino, cantine, Enoteca + filtro «Su Tannico»), da `data/tannico.csv`: 116 link esatti, 174 con annata diversa (con nota), gli altri aprono la ricerca; nessun prezzo o punteggio copiato; «Come funziona» e README aggiornati.
+- 25 ottobre 2026: voti dalle schede Tannico (`tannico.py voti`, approvato da Davide): 184 schede scaricate di 194 (10 tolte da Tannico, 404), `data/tannico_voti.csv` con 269 vini (264 con giudizio Tannico, 67 con critici: Parker, Decanter, Galloni, Suckling, Wine Spectator...). Bollino col voto migliore sulle schede dei vini, sezione «Voti» nella pagina, filtro «Con voto» e ordine per voto nell'Enoteca; per «annata diversa» l'anno e' sempre scritto accanto al voto.
+
+- 25 ottobre 2026: bollino e filtro/ordine per voto solo se l'annata Tannico dista al massimo 2 anni da quella di Peck (senza annata: solo se manca da entrambe); piu' lontane, i voti restano nella pagina del vino dentro l'avviso, senza bollino. Aggiornato «Come funziona».

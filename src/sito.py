@@ -800,9 +800,62 @@ def carica_tannico():
     return out
 
 
+# Critici in ordine di "peso" per scegliere il voto da mettere sul bollino (solo scala 100).
+# Se nessuno e' presente si usa il giudizio di Tannico stesso.
+CRITICI_ORDINE = ["Robert Parker", "James Suckling", "Wine Spectator", "Decanter", "Antonio Galloni", "Vinous",
+                  "Wine Enthusiast", "Falstaff", "Gambero Rosso", "Veronelli", "Luca Maroni", "Doctor Wine", "Bibenda"]
+CRITICI_BREVI = {"Robert Parker": "Parker", "James Suckling": "Suckling", "Antonio Galloni": "Galloni"}
+
+
+def leggi_critici(testo):
+    """'Robert Parker 94/100; Bibenda 5 grappoli' -> [(nome, valore, scala_o_unita)]."""
+    out = []
+    for voce in (testo or "").split(";"):
+        m = re.fullmatch(r"\s*(.+?) (\d+(?:\.\d+)?)(?:/(\d+)| ([^\W\d_]+))?\s*", voce)
+        if m:
+            out.append((m.group(1), m.group(2), m.group(3) or m.group(4) or ""))
+    return out
+
+
+def carica_voti():
+    """id vino -> voti presi dalla scheda Tannico (data/tannico_voti.csv, prodotto da `tannico.py voti`)."""
+    try:
+        righe = leggi_csv("tannico_voti")
+    except FileNotFoundError:
+        return {}
+    out = {}
+    for r in righe:
+        critici = leggi_critici(r["voti_critici"])
+        pt = int(r["punteggio_tannico"]) if r["punteggio_tannico"].isdigit() else None
+        if pt is None and not critici:
+            continue
+        voce = {"anno": r["annata_tannico"], "diversa": r["corrispondenza"] == "annata diversa",
+                "tannico": pt, "critici": critici, "url": r["url_tannico"], "data": r["data_raccolta"]}
+        # voto del bollino: il critico piu' autorevole su scala 100, altrimenti il giudizio di Tannico
+        scelto = None
+        for nome in CRITICI_ORDINE:
+            for c in critici:
+                if c[0] == nome and c[2] == "100":
+                    scelto = (CRITICI_BREVI.get(nome, nome), int(float(c[1])))
+                    break
+            if scelto:
+                break
+        if not scelto:
+            for c in critici:  # un critico non in elenco, ma su scala 100
+                if c[2] == "100":
+                    scelto = (CRITICI_BREVI.get(c[0], c[0]), int(float(c[1])))
+                    break
+        if not scelto and pt is not None:
+            scelto = ("Tannico", pt)
+        voce["bollino"] = scelto
+        out[r["id"]] = voce
+    return out
+
+
 def costruisci_vini(box_per_nome):
     righe = leggi_csv("vini")
     tannico = carica_tannico()
+    voti = carica_voti()
     cantine_csv = leggi_csv("cantine")
     nelle_box = leggi_csv("vini_nelle_box")
 
@@ -855,6 +908,21 @@ def costruisci_vini(box_per_nome):
                 w["tn"], w["ta"] = tannico[r["id"]]
                 if not w["ta"]:
                     del w["ta"]
+            v = voti.get(r["id"])
+            if v and v["bollino"]:                                        # voti dalla scheda Tannico
+                ap, at = r["annata"].strip(), (v["anno"] or "").strip()
+                if ap.isdigit() and at.isdigit():
+                    scarto = abs(int(ap) - int(at))
+                    vicina = scarto <= 2 if v["diversa"] else True
+                else:
+                    scarto, vicina = None, (not ap and not at)            # senza annata: solo se manca da entrambe
+                v["lontana"] = v["diversa"] and scarto is not None and scarto > 2
+                if vicina:                                                # bollino solo se l'annata e' (quasi) la stessa
+                    w["vb"] = v["bollino"][0] + " " + str(v["bollino"][1])    # "Parker 96"
+                    w["vn"] = v["bollino"][1]                             # numero: per ordinare e filtrare
+                    if v["diversa"] and at != ap:
+                        w["vy"] = v["anno"] or "altra annata"             # annata dei voti, se non e' quella di Peck
+                w["voti"] = v                                             # completo: solo per la pagina del vino
             # profilo di degustazione (0-5): [(nome, valore)] solo per quelli indicati
             prof = [(nome, intero(r.get(col))) for col, nome in ATTRIBUTI_VINO]
             prof = [(n, v) for n, v in prof if v is not None]
@@ -943,7 +1011,7 @@ def costruisci_vini(box_per_nome):
 
 def json_vini(vini):
     """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
-    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta")
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "vb", "vn", "vy")
     return {
         "meta": vini["meta"],
         "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
@@ -1593,6 +1661,42 @@ def bottone_tannico(w, classe):
             f'Cerca su Tannico{sr_nuova_scheda()}</a>')
 
 
+def badge_voto(w):
+    """Bollino piccolo con il voto migliore (es. «Parker 96» o, per un'altra annata, «Parker 96 · 2022»)."""
+    if "vb" not in w:
+        return ""
+    testo = w["vb"] + (f" · {w['vy']}" if w.get("vy") else "")
+    tit = ("Voto riportato da Tannico" + (f" per l’annata {w['vy']}, non quella di Peck" if w.get("vy") else ""))
+    return f' <span class="voto-badge" title="{H(tit)}">{H(testo)}</span>'
+
+
+def blocco_voti(w):
+    v = w.get("voti")
+    if not v:
+        return ""
+    righe = ""
+    if v["tannico"] is not None:
+        righe += f'<li><span class="fonte">Giudizio di Tannico</span><span><strong>{v["tannico"]}</strong>/100</span></li>'
+    for nome, valore, scala in v["critici"]:
+        if scala.isdigit():
+            val = f"<strong>{H(valore)}</strong>/{H(scala)}"
+        else:
+            val = f"<strong>{H(valore)}</strong>" + (f" {H(scala)}" if scala else "")
+        righe += f'<li><span class="fonte">{H(nome)}</span><span>{val}</span></li>'
+    avviso = ""
+    if v.get("lontana"):
+        avviso = (f'<p class="avviso-annata"><strong>Voti dell’annata {H(v["anno"])}</strong>, lontana da quella in carta '
+                  f'({H(w["a"])}): li riportiamo solo come riferimento sul vino, non sulla bottiglia.</p>')
+    elif v["diversa"]:
+        anno = v["anno"] or "un’altra annata"
+        avviso = (f'<p class="avviso-annata"><strong>Voti dell’annata {H(anno)}</strong> '
+                  f'(su Peck c’è la {H(w["a"] or "senza annata")}): non sono i voti della bottiglia della carta.</p>')
+    return (f'<section class="sezione" id="voti"><h2>Voti</h2>{avviso}<ul class="voti">{righe}</ul>'
+            f'<p class="meta">Voti e critici come li riporta Tannico nella scheda del prodotto, raccolti il '
+            f'{data_lunga(v["data"])}; non sono nostri. '
+            f'<a href="{H(v["url"])}" target="_blank" rel="noopener noreferrer">Vedi la scheda su Tannico{sr_nuova_scheda()}</a>.</p></section>')
+
+
 def url_foto_vino(w):
     if not w["ph"]:
         return ""
@@ -1614,7 +1718,7 @@ def scheda_vino(w, r):
     return (f'<article class="scheda vino">'
             f'{foto_html(url_foto_vino(w), "Bottiglia: " + w["n"] + (" " + w["a"] if w["a"] else ""), "vino")}'
             f'<div class="corpo"><div class="col-a"><p class="tipo-riga">{tipo_chip(w["tipo"])}'
-            f'{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}</p>'
+            f'{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}</p>'
             f'<h3 class="nome"><a class="vai" href="{pagina}">{H(w["n"])}</a></h3></div>'
             f'<p class="meta"><span class="col-b"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a></span>'
             f'<span class="col-c">{H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</span></p>'
@@ -1636,8 +1740,10 @@ def pagina_enoteca(V):
         '<div class="campo"><label for="f-pmax">Prezzo fino a (€)</label><input type="number" id="f-pmax" name="pmax" '
         'min="0" step="1" inputmode="numeric" placeholder="fino a"></div>' +
         ctl_spunta("tan", "Su Tannico", "") +
+        ctl_spunta("voto", "Con voto", "") +
         ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
-                                     ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia")],
+                                     ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia"),
+                                     ("voto-giu", "Voto: dal più alto")],
                    modo="ord", vuoto="Nome"))
     cantine = "".join(f'<li><a href="../cantina/{c["id"]}/">{H(c["nome"])}</a> <span class="meta">({c["n"]})</span></li>'
                       for c in V["cantine"])
@@ -1683,7 +1789,7 @@ def pagina_cantina(c, boxes, r):
 {('<p class="meta">Nota: ' + H(c["nota"]) + "</p>") if c["nota"] else ""}
 {box_html}
 <section class="sezione"><h2>Tutte le etichette ({len(vini)})</h2>
-<p class="meta">I bottoni Vivino, Wine-Searcher e Tannico aprono la scheda o una ricerca sui loro siti: qui non copiamo punteggi.</p>
+<p class="meta">I bottoni Vivino, Wine-Searcher e Tannico aprono la scheda o una ricerca sui loro siti. Il bollino con un voto (per esempio «Parker 96») viene dalla scheda Tannico del vino; se l’annata è diversa da quella di Peck c’è scritto anche l’anno.</p>
 <ul class="griglia">{"".join(f"<li>{scheda_vino(w, r)}</li>" for w in vini)}</ul>
 </section>
 </article>"""
@@ -1775,15 +1881,16 @@ def pagina_vino(w, V, r, correlati):
 <div class="dettaglio">
 {foto_html(url_foto_vino(w), "Bottiglia: " + nome_completo, "vino")}
 <div>
-<p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}</p>
+<p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}</p>
 <h1>{H(w["n"])}</h1>
 <p class="originale"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a> · {H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</p>
 <dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo}</span> · {stock}</dd></dl>
 <div class="gruppo-bottoni">{bottoni_punteggi(w)}
 <a class="bottone piccolo" href="{H(link_winerim)}" target="_blank" rel="noopener noreferrer">Scheda completa in enoteca{sr_nuova_scheda()}</a></div>
-<p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino, Tannico la scheda o una ricerca: da noi non ci sono punteggi.</p>
+<p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino, Tannico la scheda o una ricerca. Di Vivino e Wine-Searcher non copiamo i voti.</p>
 </div>
 </div>
+{blocco_voti(w)}
 {profilo}
 {formati}
 {dettagli}
@@ -1828,7 +1935,9 @@ def vini_correlati(vini):
 
 def pagina_come_funziona(dispensa, box, produttori, V, M):
     conta = Counter(d["stato"] for d in dispensa)
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "vini", "cantine", "vini_nelle_box"]
+    VOTI = {"n": sum(1 for w in V["vini"] if "tn" in w),
+            "data": next((w["voti"]["data"] for w in V["vini"] if "voti" in w), "2026-10-25")}
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "vini", "cantine", "vini_nelle_box", "tannico_voti"]
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -1867,7 +1976,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
 <li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì.</li>
 <li><strong>Tannico. </strong>I link a Tannico vengono dal catalogo pubblico dei prodotti di Tannico, abbinato per nome ai nostri vini: {sum(1 for w in V['vini'] if 'tn' in w)} link diretti alla scheda (controllati a campione); per tutti gli altri il bottone «Cerca su Tannico» apre una ricerca sul loro sito.</li>
-<li><strong>Prezzi e punteggi di Tannico. </strong>Non copiamo né prezzi né punteggi di Tannico: il bottone porta solo al loro sito.</li>
+<li><strong>I voti. </strong>I voti vengono dalla scheda Tannico del vino abbinato (il «Giudizio di Tannico» e i punteggi dei critici, come li riporta Tannico), raccolti il {data_lunga(VOTI["data"])} solo per i {VOTI["n"]} vini che Tannico vende. Registriamo solo i numeri e il nome del critico, mai il testo delle recensioni. Se la scheda Tannico è di un’altra annata, i voti sono di quell’annata e l’anno è scritto accanto al voto; il bollino con il voto sulle schede compare solo se l’annata di Tannico dista al massimo 2 anni da quella in carta (per i vini senza annata, solo se manca da entrambe le parti). Per le annate più lontane i voti restano nella pagina del vino, ma solo come riferimento. Non copiamo i prezzi di Tannico.</li>
 </ul>
 
 <h2>Quanto siamo sicuri</h2>
@@ -1894,6 +2003,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li>Nell’enoteca l’intestazione della carta parla di 1.005 cantine, ma l’elenco pubblico ne mostra {M["n_cantine"]} ({num(M["n_vini"])} vini). Non sappiamo perché: forse sono vini archiviati o nascosti.</li>
 <li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
 <li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
+<li>I voti sono quelli che Tannico mostra nella scheda del vino abbinato: l’abbinamento è fatto per nome e può sbagliare, e se l’annata è diversa i voti non sono quelli della bottiglia di Peck. I voti dei critici possono riferirsi all’annata “corrente” della scheda. Non tutti i vini li hanno.</li>
 </ul>
 {sezione_link}
 <h2>Come sono scelte le categorie</h2>

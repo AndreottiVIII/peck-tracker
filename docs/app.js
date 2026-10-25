@@ -188,7 +188,7 @@
       const ext = (url, t) => `<a class="bottone secondario piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${t}<span class="sr"> (si apre in una nuova scheda)</span></a>`;
       const tt = w.tt || (w.n);
       return `<li class="it"><article class="scheda vino">${foto}<div class="corpo">` +
-        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}</p>` +
+        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}${w.vb ? ` <span class="voto-badge" title="${esc('Voto riportato da Tannico' + (w.vy ? ' per l’annata ' + w.vy + ', non quella di Peck' : ''))}">${esc(w.vb + (w.vy ? ' · ' + w.vy : ''))}</span>` : ''}</p>` +
         `<h2 class="nome"><a class="vai" href="${pagina}">${esc(w.n)}</a></h2></div>` +
         `<p class="meta"><span class="col-b"><a href="${radice}cantina/${esc(w.cantina.id)}/">${esc(w.cantina.nome)}</a></span>` +
         `<span class="col-c">${esc([w.r, w.paese].filter(Boolean).join(' · '))}</span></p>` +
@@ -209,7 +209,7 @@
       const pi = S.paese ? M.paesi.indexOf(S.paese) : -1;
       let arr = V.vini.filter(w =>
         (ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
-        (!can || w.kc.includes(can)) && (!S.tan || w.tn) &&
+        (!can || w.kc.includes(can)) && (!S.tan || w.tn) && (!S.voto || w.vn != null) &&
         (pmin == null || (w.pr != null && w.pr >= pmin)) && (pmax == null || (w.pr != null && w.pr <= pmax)) &&
         q.every(t => w.k.includes(t)));
       const senza = (x, y, f) => (x.pr == null) - (y.pr == null) || f(x, y);   // senza prezzo in fondo
@@ -218,6 +218,7 @@
         'prezzo-giu': (x, y) => senza(x, y, (a, b) => b.pr - a.pr),
         'annata-giu': (x, y) => (Number(y.a) || 0) - (Number(x.a) || 0),
         'annata-su': (x, y) => (Number(x.a) || 9999) - (Number(y.a) || 9999),
+        'voto-giu': (x, y) => (x.vn == null) - (y.vn == null) || (y.vn - x.vn) || x.n.localeCompare(y.n, 'it', { numeric: true }),
       }[S.ord] || ((x, y) => x.n.localeCompare(y.n, 'it', { numeric: true }));
       return arr.sort(f);
     }

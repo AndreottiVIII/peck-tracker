@@ -2,12 +2,17 @@
 
     python -I src/tannico.py scarica [--forza] [--pausa 1.5]
     python -I src/tannico.py abbina
+    python -I src/tannico.py voti [--forza] [--pausa 3] [--solo-analisi]
 
 `scarica` usa solo cio' che Tannico (Shopify) pubblica per i motori di ricerca e che il suo
 robots.txt non vieta: sitemap.xml, sitemap_products_N.xml e /products.json. Salva in
 data/raw/tannico/ (non si pubblica). Delle schede tiene solo titolo, produttore, tipo, prezzo,
 disponibilita': NON salva i testi descrittivi (body_html).
 `abbina` scrive data/tannico.csv.
+`voti` scarica le schede prodotto di Tannico (/products/<handle>, consentite dal robots.txt) dei vini
+abbinati "esatta" o "annata diversa" (una volta per indirizzo, 3 secondi di pausa, 429 = si aspetta
+60 secondi e si rallenta) in data/raw/tannico/prodotti/ e ne estrae SOLO i numeri: il giudizio di
+Tannico e i punteggi dei critici (nome e voto), scrivendo data/tannico_voti.csv. Nessun testo.
 """
 import argparse
 import csv
@@ -17,6 +22,7 @@ import re
 import sys
 import time
 import unicodedata
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -365,16 +371,200 @@ def abbina():
     print(len(uscita), "vini;", Counter(u["corrispondenza"] for u in uscita))
 
 
+# ---------------------------------------------------------------- voti
+PRODOTTI = RAW / "prodotti"
+USCITA_VOTI = RADICE / "data" / "tannico_voti.csv"
+DATA_RACCOLTA = "2026-10-25"
+UA_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/130.0.0.0 Safari/537.36")
+
+
+def handle_di(url):
+    return url.rstrip("/").rsplit("/products/", 1)[1].split("?")[0]
+
+
+def url_da_scaricare():
+    """Indirizzi unici dei vini abbinati 'esatta' o 'annata diversa', nell'ordine del file."""
+    with open(USCITA, encoding="utf-8-sig", newline="") as f:
+        righe = [r for r in csv.DictReader(f) if r["corrispondenza"] in ("esatta", "annata diversa")]
+    visti, out = set(), []
+    for r in righe:
+        if r["url_tannico"] and r["url_tannico"] not in visti:
+            visti.add(r["url_tannico"])
+            out.append(r["url_tannico"])
+    return out
+
+
+def scarica_schede(forza=False, pausa=3.0):
+    PRODOTTI.mkdir(parents=True, exist_ok=True)
+    urls = url_da_scaricare()
+    print(len(urls), "schede da controllare")
+    nuove = 0
+    for i, url in enumerate(urls, 1):
+        f = PRODOTTI / (handle_di(url) + ".html")
+        if f.exists() and not forza:
+            continue
+        rich = urllib.request.Request(url, headers={"User-Agent": UA_BROWSER, "Accept-Language": "it-IT,it;q=0.9"})
+        for tentativo in range(4):
+            time.sleep(pausa)
+            try:
+                with urllib.request.urlopen(rich, timeout=60) as r:
+                    f.write_bytes(r.read())
+                nuove += 1
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:  # troppe richieste: si aspetta e si rallenta, mai insistere
+                    pausa *= 1.5
+                    print(f"  429 su {url}: attendo 60 s, pausa ora {pausa:.1f} s", file=sys.stderr)
+                    time.sleep(60)
+                elif e.code in (404, 410):
+                    print(f"  {e.code} {url}", file=sys.stderr)
+                    break
+                else:
+                    print(f"  errore {e.code} {url}", file=sys.stderr)
+                    time.sleep(10 * (tentativo + 1))
+            except Exception as e:
+                print("  errore", url, e, file=sys.stderr)
+                time.sleep(10 * (tentativo + 1))
+        if i % 20 == 0:
+            print(f"  {i}/{len(urls)}", flush=True)
+    print("scaricate", nuove, "schede nuove in", PRODOTTI)
+
+
+# nome come scritto da Tannico (senza maiuscole) -> nome da mostrare. Gli altri restano come sono.
+NOMI_CRITICI = {"suckling": "James Suckling", "james suckling": "James Suckling",
+                "parker": "Robert Parker", "robert parker": "Robert Parker",
+                "wine advocate": "Robert Parker", "the wine advocate": "Robert Parker",
+                "gambero rosso": "Gambero Rosso", "veronelli": "Veronelli", "luca maroni": "Luca Maroni",
+                "wine spectator": "Wine Spectator", "decanter": "Decanter", "vinous": "Vinous",
+                "falstaff": "Falstaff", "bibenda": "Bibenda", "doctor wine": "Doctor Wine",
+                "jancis robinson": "Jancis Robinson", "antonio galloni": "Antonio Galloni", "wine enthusiast": "Wine Enthusiast"}
+# criteri che non sono su scala 100: unita' per il numero
+SCALE_FISSE = {"Bibenda": "grappoli", "Gambero Rosso": "bicchieri", "Jancis Robinson": "20"}
+SCALA_UNITA = [(r"grappol", "grappoli"), (r"bicchier", "bicchieri"), (r"\bviti?\b", "viti"),
+               (r"stell", "stelle"), (r"corone", "corone"), (r"sole|soli", "soli")]
+
+
+def nome_critico(n):
+    n = re.sub(r"\s+", " ", n.strip())
+    return NOMI_CRITICI.get(norm(n), n)
+
+
+def pulisci(x):
+    import html as _h
+    return re.sub(r"\s+", " ", _h.unescape(x)).strip()
+
+
+def leggi_scheda(testo):
+    """Numeri di una scheda prodotto di Tannico: giudizio Tannico, annata, critici [(nome, valore, scala)]."""
+    # -- giudizio di Tannico: JSON-LD (Punteggio Tannico), poi elenco caratteristiche, poi bollino
+    m = (re.search(r'"name":\s*"(?:Punteggio|Giudizio di) Tannico",\s*"value":\s*"(\d+)\s*pt"', testo)
+         or re.search(r"<strong>\s*(?:Giudizio di|Punteggio) Tannico:\s*</strong>\s*<span[^>]*>\s*(\d+)\s*pt", testo))
+    i_main = testo.find('id="shopify-section-template--')
+    i_main = testo.find("__main", i_main if i_main >= 0 else 0)
+    i_gall = testo.find('data-controller="product-gallery"', max(i_main, 0))
+    zona = testo[max(i_main, 0):i_gall] if i_gall > 0 else ""
+    if not m:
+        m = re.search(r'aria-label="Giudizio di Tannico:\s*(\d+)/100"', zona)
+    tannico = int(m.group(1)) if m else None
+    # -- annata
+    a = re.search(r'"name":\s*"Annata",\s*"value":\s*"((?:19|20)\d\d)"', testo)
+    annata_t = a.group(1) if a else ""
+    # -- bollini in alto (nome: valore con la scala)
+    critici = {}
+    for nome, val in re.findall(r'role="img"\s+aria-label="([^":]+):\s*([^"]+)"', zona):
+        nome = pulisci(nome)
+        if norm(nome) in ("giudizio di tannico", "tannico", "punteggio tannico"):
+            continue
+        val = pulisci(val)
+        mm = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*/\s*(\d+)", val)
+        if mm:
+            critici[nome_critico(nome)] = (mm.group(1).replace(",", "."), mm.group(2))
+            continue
+        mm = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s+(.+)", val)
+        if mm:
+            unita = next((u for pat, u in SCALA_UNITA if re.search(pat, mm.group(2).lower())), mm.group(2).lower())
+            critici[nome_critico(nome)] = (mm.group(1).replace(",", "."), unita)
+    # -- blocco "Riconoscimenti annata corrente": numero + nome (la scala non c'e')
+    i = testo.find("Riconoscimenti annata corrente")
+    if i >= 0:
+        fine = testo.find("<product-description", i)
+        blocco = testo[i:fine if fine > 0 else i + 3000]
+        for num, nome in re.findall(r"<div[^>]*>\s*(\d+(?:[.,]\d+)?)\s*</div>\s*<div[^>]*>\s*([^<]+?)\s*</div>", blocco):
+            nome = nome_critico(pulisci(nome))
+            if nome not in critici:
+                scala = SCALE_FISSE.get(nome) or ("100" if float(num.replace(",", ".")) > 20 else "?")
+                critici[nome] = (num.replace(",", "."), scala)
+    return tannico, annata_t, [(n, v, sc) for n, (v, sc) in critici.items()]
+
+
+def scrivi_voto(nome, valore, scala):
+    if scala == "100":
+        return f"{nome} {valore}/100"
+    if scala == "?":
+        return f"{nome} {valore}"
+    if scala.isdigit():
+        return f"{nome} {valore}/{scala}"
+    return f"{nome} {valore} {scala}"
+
+
+def voti():
+    with open(USCITA, encoding="utf-8-sig", newline="") as f:
+        righe = [r for r in csv.DictReader(f) if r["corrispondenza"] in ("esatta", "annata diversa")]
+    cache, uscita = {}, []
+    senza_file = 0
+    for r in righe:
+        url = r["url_tannico"]
+        if url not in cache:
+            f = PRODOTTI / (handle_di(url) + ".html")
+            cache[url] = (leggi_scheda(f.read_bytes().decode("utf-8", errors="replace"))
+                          if f.exists() else None)
+        dati = cache[url]
+        if dati is None:
+            senza_file += 1
+            continue
+        tannico, annata_t, critici = dati
+        uscita.append({
+            "id": r["id"], "url_tannico": url,
+            "annata_tannico": annata_t or annata(r["titolo_tannico"]) or annata(url.rsplit("/", 1)[-1]),
+            "corrispondenza": r["corrispondenza"],
+            "punteggio_tannico": tannico if tannico is not None else "",
+            "voti_critici": "; ".join(scrivi_voto(*c) for c in critici),
+            "n_critici": len(critici), "data_raccolta": DATA_RACCOLTA})
+    campi = ["id", "url_tannico", "annata_tannico", "corrispondenza", "punteggio_tannico",
+             "voti_critici", "n_critici", "data_raccolta"]
+    with open(USCITA_VOTI, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, campi)
+        w.writeheader()
+        w.writerows(uscita)
+    from collections import Counter
+    pagine = [d for d in cache.values() if d is not None]
+    print(len(righe), "vini abbinati;", len(cache), "schede;", len(pagine), "lette;", senza_file, "vini senza scheda scaricata")
+    print("con giudizio Tannico:", sum(1 for u in uscita if u["punteggio_tannico"] != ""),
+          "| con critici:", sum(1 for u in uscita if u["n_critici"]),
+          "| senza niente:", sum(1 for u in uscita if u["punteggio_tannico"] == "" and not u["n_critici"]))
+    conta = Counter()
+    for d in pagine:
+        for n, v, sc in d[2]:
+            conta[n] += 1
+    print("critici (per scheda):", dict(conta.most_common()))
+
+
 SOGLIA_SIMILE = 0.6
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("comando", choices=["scarica", "abbina"])
+    ap.add_argument("comando", choices=["scarica", "abbina", "voti"])
     ap.add_argument("--forza", action="store_true")
-    ap.add_argument("--pausa", type=float, default=1.5)
+    ap.add_argument("--pausa", type=float, default=None)
+    ap.add_argument("--solo-analisi", action="store_true")
     a = ap.parse_args()
     if a.comando == "scarica":
-        scarica(a.forza, a.pausa)
-    else:
+        scarica(a.forza, a.pausa or 1.5)
+    elif a.comando == "abbina":
         abbina()
+    else:
+        if not a.solo_analisi:
+            scarica_schede(a.forza, a.pausa or 3.0)
+        voti()

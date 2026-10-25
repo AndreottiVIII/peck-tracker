@@ -23,6 +23,8 @@ Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
 - `vini.csv`: i 3.071 vini della carta dell'enoteca, una riga per formato (3.082 righe).
 - `cantine.csv`: le 820 cantine della carta, con quante etichette hanno.
 - `vini_nelle_box.csv`: i produttori di vino nominati nelle box dello shop, confrontati con la carta.
+- `tannico.csv` e `tannico_voti.csv`: il vino di Tannico abbinato a ogni vino della carta e i voti presi dalla sua
+  scheda (vedi "La carta dei vini" e "Il sito").
 - `link_controllati.csv` (e `link_verifica_manuale.csv`): l'esito del controllo dei link ai siti, agli
   shop e alle fonti delle aziende (vedi "Il controllo dei link").
 
@@ -245,8 +247,28 @@ pubblico di Tannico e lo abbina ai vini per nome). Corrispondenza `esatta`: bott
 alla scheda; `annata diversa`: stesso bottone con la nota «su Tannico c'e' l'annata ...» (l'anno si legge
 da `titolo_tannico`); `da controllare` e `nessuna`: bottone «Cerca su Tannico» che apre la ricerca
 (`tannico.it/search?q=<cantina + nome>`, stesse parole di Vivino). Nell'Enoteca c'e' il filtro «Su
-Tannico». Non copiamo prezzi ne' punteggi di Tannico. I link diretti stanno anche in `docs/vini.json`
+Tannico». Non copiamo i prezzi di Tannico. I link diretti stanno anche in `docs/vini.json`
 (chiavi `tn`, `ta`).
+
+**I voti (Tannico).** `python -I src/tannico.py voti` scarica la scheda prodotto (`/products/<handle>`, che il
+robots.txt di Tannico consente; 3 secondi di pausa, browser finto, se arriva 429 aspetta 60 secondi e rallenta,
+le schede gia' scaricate si saltano, `--forza` le riscarica) di ogni vino abbinato `esatta` o `annata diversa`
+(194 indirizzi per 290 vini; alcuni vini puntano alla stessa scheda), le salva in `data/raw/tannico/prodotti/`
+(non si pubblica) e scrive `data/tannico_voti.csv`: `id`, `url_tannico`, `annata_tannico`, `corrispondenza`,
+`punteggio_tannico` (il «Giudizio di Tannico», che nel JSON-LD si chiama «Punteggio Tannico»; 0-100),
+`voti_critici` (per esempio `Robert Parker 97/100; Decanter 97/100`, `Bibenda 5 grappoli`, `Jancis Robinson 16/20`),
+`n_critici`, `data_raccolta` (2026-10-25). I critici vengono dai bollini in alto nella scheda (con la scala) e dal
+blocco «Riconoscimenti annata corrente» (solo numero e nome: se non e' un critico noto la scala e' scritta `?`).
+Si tengono **solo numeri e nomi dei critici**, nessun testo di recensione. Con `--solo-analisi` si rilegge
+il CSV dalle schede gia' scaricate senza scaricare niente.
+Sul sito: un bollino con il voto migliore (il primo critico su scala 100 in quest'ordine: Parker, Suckling, Wine
+Spectator, Decanter, Galloni, ...; se non c'e' nessuno, il giudizio di Tannico: «Tannico 92») accanto all'annata
+nelle schede dei vini, e una sezione «Voti» nella pagina del vino con tutte le fonti e il link a Tannico.
+**Se la corrispondenza e' `annata diversa` i voti sono dell'annata di Tannico**: il bollino dice «Parker 96 · 2022»
+e la pagina «Voti dell'annata 2022 (su Peck c'e' la ...)». Nell'Enoteca ci sono il filtro «Con voto» e l'ordine
+«Voto: dal piu' alto» (chiavi `vb`, `vn`, `vy` in `docs/vini.json`). Limiti: 21 vini puntano a 10 schede che
+Tannico ha tolto (404) e restano senza voti; per 5 schede non c'e' nessun voto; i vini vecchi (per esempio un
+Sassicaia 1985) mostrano i voti dell'annata che Tannico vende oggi, scritta accanto.
 
 Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in `data/raw/` per i link alle foto),
 **cancella le pagine generate e le riscrive tutte** (circa 4.200 pagine, 55 MB; circa un minuto): va
@@ -292,6 +314,7 @@ python -I src/vini_box.py       # vini: confronta le box con la carta, scrive vi
 python -I src/controlla_link.py # link: controlla i link, scrive link_controllati.csv (ritocchi a mano in link_verifica_manuale.csv)
 python -I src/tannico.py scarica  # Tannico: scarica il catalogo pubblico
 python -I src/tannico.py abbina   # Tannico: abbina i vini, scrive tannico.csv
+python -I src/tannico.py voti     # Tannico: scarica le schede dei vini abbinati (circa 15 minuti), scrive tannico_voti.csv
 python -I src/sito.py           # sito: cancella e riscrive tutte le pagine di docs/ (e docs/vini.json)
 ```
 
