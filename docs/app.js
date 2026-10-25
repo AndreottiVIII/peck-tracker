@@ -6,7 +6,8 @@
    3. l'elenco dei vini dell'enoteca, che si legge da vini.json;
    4. il riquadro al posto di una foto che non si carica;
    5. i ritagli delle foto delle box (si caricano solo quando sono vicini allo schermo; se la foto manca resta il disegno);
-   6. la pagina «Prezzi confrontati», che legge prezzi.json (filtri, categorie, pagine). */
+   6. la pagina «Prezzi confrontati», che legge prezzi.json (filtri, categorie, pagine);
+   7. la pagina «Fuori da via Spadari», che legge fuori.json con lo stesso codice (righe e filtri propri). */
 
 /* ---------- 5. ritagli dalle foto delle box ---------- */
 (() => {
@@ -414,6 +415,9 @@
     const SRC = { produttore: 1, altro: 8, tannico: 2, enoteche: 4 };
     let soglia = 5;
     const ordineGruppi = {}, etichetteGruppi = {};
+    const FUORI = cont.hasAttribute('data-fuori');   // «Fuori da via Spadari»: stesso codice, righe e filtri un po' diversi
+    const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+    const dataLunga = iso => { const [a, m, g] = iso.split('-').map(Number); return `${g} ${MESI[m - 1]} ${a}`; };
 
     const pctTesto = a => (a >= 10 ? String(Math.round(a)) : a.toFixed(1).replace('.', ',').replace(/,0$/, ''));
     const pctSegno = dp => (dp == null ? 'n.d.' : Math.abs(dp) < 0.5 ? '≈ 0%' : (dp > 0 ? '+' : '−') + pctTesto(Math.abs(dp)) + '%');
@@ -472,23 +476,58 @@
         `<div class="occ-diff v-${classeDiff(dp)}"><p class="grande">${pctSegno(dp)}</p>${barra(dp)}<p class="meta">${esc(verdetto(dp))} (${esc(r.b)})</p>${nd}</div></li>`;
     }
 
+    function rigaFuori(r) {
+      const f = r.fu[0], cibo = r.t === 'c';
+      const nome = r.h ? `<a href="${radice + r.h}">${esc(r.n)}</a>` : esc(r.n);
+      let meta, peck, fuori, url;
+      if (cibo) {
+        url = f[2];
+        meta = r.sd ? '<span class="chip-nd">solo nel delivery, non nello shop</span>' : '';
+        peck = `<div class="lato"><p class="et">Da Peck</p><p class="cifra">${prezzoFormato(r.pk[0], r.pk[1])}</p><p>${alUnita(r.pk[2], r.pk[3])}</p></div>`;
+        fuori = `<div class="lato"><p class="et">Da ${esc(r.dove)}</p><p class="cifra">${prezzoFormato(f[3], f[4])}</p><p>${alUnita(f[5], f[6])}</p></div>`;
+      } else {
+        url = f[1];
+        meta = [r.ti, r.r, r.pa].filter(Boolean).map(esc).join(' · ') + (r.a ? ' · ' + esc(r.a) : '');
+        peck = `<div class="lato"><p class="et">Da Peck</p><p class="cifra">${euro(r.pk[0])} <span class="meta">(${String(r.l).replace('.', ',')} L)</span></p><p><span class="meta">${euro(r.pk[1])} al litro</span></p></div>`;
+        const altri = r.fu.slice(1).map(o => `${esterno(o[1], o[0])} ${euro(o[3])}${o[5] ? '' : ' (annata ' + esc(o[2] || '?') + ')'}`);
+        fuori = `<div class="lato"><p class="et">Su ${esc(f[0])}</p><p class="cifra">${euro(f[3])} <span class="meta">(${String(f[6]).replace('.', ',')} L)</span>${f[5] ? '' : ` <span class="chip-annata">annata ${esc(f[2] || '?')}</span>`}</p><p>${alUnita(f[4], 'litro')}</p>` +
+          (altri.length ? `<p class="meta">Anche: ${altri.join('; ')}</p>` : '') + '</div>';
+      }
+      const av = r.av.map(a => `<p class="meta attenzione">${esc(a)}</p>`).join('');
+      const compra = url ? esterno(url, 'Compra da ' + r.dove, 'bottone piccolo') : '';
+      const pagina = r.h ? `<a class="vai-pagina" href="${radice + r.h}">Vai alla pagina<span class="sr"> di ${esc(r.n)}</span></a>` : '';
+      return `<li class="occ fuori" data-g="${esc(r.g)}">${foto(r)}` +
+        `<div class="occ-nome"><p class="cat">${cibo ? 'Cibo' : 'Vino'}</p><p class="nome">${nome}</p>` +
+        `<p><span class="badge-sim s-${r.sp === 3 ? 'stesso' : 'molto'}">${esc(r.st)}</span></p>${meta ? `<p class="meta">${meta}</p>` : ''}</div>` +
+        `<div class="occ-prezzi">${peck}${fuori}</div>` +
+        `<div class="occ-diff v-fuori"><p class="grande">Risparmi ${euro(r.e)}</p><p class="meta">−${pctTesto(r.v)}% rispetto a Peck. ${esc(verdetto(r.dp))} (${esc(r.b)}).</p></div>` +
+        `<div class="occ-extra">${av}<div class="gruppo-bottoni">${compra}${pagina}</div>` +
+        `<p class="meta">Prezzi visti il ${dataLunga(r.d)}, spedizione esclusa.</p></div></li>`;
+    }
+
     function filtra(S) {
       const q = norm(S.q || '').split(/\s+/).filter(Boolean);
       const modo = S.ord;
       const arr = V.righe.filter(r => {
         if (S.cat && r.g !== S.cat) return false;
         if (S.reg && !(r.t === 'v' && r.r === S.reg)) return false;
-        if (S.fonte && !(r.s & SRC[S.fonte])) return false;
+        if (FUORI) {
+          if (S.dove && r.dove !== S.dove) return false;
+          if (S.pulito && r.av.length) return false;
+        } else if (S.fonte && !(r.s & SRC[S.fonte])) return false;
         if (S.stesso && r.sp !== 3) return false;
-        if (S.occ && !(r.x === 1 && r.dp <= soglia)) return false;
+        if (!FUORI && S.occ && !(r.x === 1 && r.dp <= soglia)) return false;
         if (q.length) {
-          if (!r.k) r.k = norm([r.n, r.fu.map(f => f[0]).join(' '), r.r || '', r.pa || '', r.ti || '', etichetteGruppi[r.g] || ''].join(' '));
+          if (!r.k) r.k = norm([r.n, r.dove || '', r.fu.map(f => f[0]).join(' '), r.r || '', r.pa || '', r.ti || '', etichetteGruppi[r.g] || ''].join(' '));
           if (!q.every(t => r.k.includes(t))) return false;
         }
         return true;
       });
       const nome = (a, b) => a.n.localeCompare(b.n, 'it', { numeric: true });
-      if (modo === 'dp-su') arr.sort((a, b) => a.dp - b.dp || nome(a, b));
+      if (FUORI && modo === 'eur') arr.sort((a, b) => b.e - a.e || nome(a, b));
+      else if (FUORI && modo === 'pct') arr.sort((a, b) => b.v - a.v || nome(a, b));
+      else if (FUORI && !modo) arr.sort((a, b) => (ordineGruppi[a.g] - ordineGruppi[b.g]) || b.e - a.e || nome(a, b));
+      else if (modo === 'dp-su') arr.sort((a, b) => a.dp - b.dp || nome(a, b));
       else if (modo === 'dp-giu') arr.sort((a, b) => b.dp - a.dp || nome(a, b));
       else if (modo === 'nome') arr.sort(nome);
       else arr.sort((a, b) => (ordineGruppi[a.g] - ordineGruppi[b.g]) || a.dp - b.dp || nome(a, b));
@@ -505,7 +544,8 @@
       if (vivo) {
         const m = mediana(elenco.map(r => r.dp));
         const meno = elenco.filter(r => r.dp <= soglia).length;
-        vivo.textContent = n ? `Differenza mediana di quelli mostrati: ${pctSegno(m)}. Peck costa meno o al massimo +${String(soglia).replace('.', ',')}% in ${num(meno)}.` : '';
+        if (FUORI) vivo.textContent = n ? `Risparmio mediano di quelli mostrati: −${pctTesto(mediana(elenco.map(r => r.v)))}% (${euro(Math.round(mediana(elenco.map(r => r.e)) * 100) / 100)}).` : '';
+        else vivo.textContent = n ? `Differenza mediana di quelli mostrati: ${pctSegno(m)}. Peck costa meno o al massimo +${String(soglia).replace('.', ',')}% in ${num(meno)}.` : '';
       }
       if (daCapo) { mostrati = PASSO; ul.replaceChildren(); ultimo = null; }
       const conta = {};
@@ -516,7 +556,7 @@
           ultimo = r.g;
           html += `<li class="gruppo-testa"><h2>${esc(etichetteGruppi[r.g] || r.g)} <span class="meta">(${num(conta[r.g])})</span></h2></li>`;
         }
-        html += riga(r);
+        html += FUORI ? rigaFuori(r) : riga(r);
       }
       ul.insertAdjacentHTML('beforeend', html);
       if (window.ptRitagli) window.ptRitagli(ul);

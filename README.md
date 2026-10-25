@@ -310,7 +310,8 @@ quindi va bene sia sotto `/peck-tracker/` su GitHub Pages sia alla radice di un 
 | `cantina/<id>/` | una cantina e le sue etichette | 820 |
 | `vino/<id>-<nome>/` | un vino: foto, profilo di degustazione (punti e grafico a ragnatela), formati e prezzi, vini correlati, bottoni Vivino / Wine-Searcher / scheda completa in enoteca | 3.071 |
 | `mappa/` | la mappa dei fornitori (strato «Dispensa») e delle regioni del vino (strato «Enoteca»), con l'elenco per regione sotto; legge `docs/mappa.json` | 1 |
-| `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), cibo e vini (Tannico, Callmewine, Millesima, Xtrawine), e sotto, chiuso, i 20 casi in cui costa di piu' | 1 |
+| `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), cibo e vini (Tannico, Callmewine, Millesima, Xtrawine), e in fondo il link a «Fuori da via Spadari» (al posto del vecchio riquadro chiuso «Dove Peck costa di piu'») | 1 |
+| `fuori/` | «Fuori da via Spadari» (voce di menu «Fuori da Spadari», dopo «Occasioni»): il contrario delle occasioni, cioe' dove lo stesso prodotto costa molto meno fuori da Peck; legge `docs/fuori.json` | 1 |
 | `prezzi/` | «Prezzi confrontati» (voce di menu): TUTTI i confronti, cibo e vini, per categoria, con barra della differenza e filtri; legge `docs/prezzi.json` | 1 |
 | `come-funziona/`, `404.html` | spiegazioni, limiti, link controllati | 2 |
 
@@ -384,8 +385,8 @@ prima per `chiave_dispensa`, poi per `nome_peck` (senza accenti e punteggiatura)
   bottiglia e al litro, annata, disponibilita' e link (vedi «Vini: Tannico e le enoteche» qui sotto). Se la bottiglia non e' disponibile lo dice.
 - **Angolo delle occasioni** (`/occasioni/`, voce di menu «Occasioni»): cibo («stesso prodotto» o «molto simile» con due
   prezzi) e vini (`confrontabile = si` **e** disponibili su Tannico) in cui la differenza e' al massimo `SOGLIA_OCCASIONE`
-  (costante in `src/sito.py`, oggi +5%), dal piu' conveniente. Il riquadro chiuso «Dove Peck costa di piu'» mostra i
-  `N_COSTA_DI_PIU` = 20 scarti maggiori. L'aggiornamento settimanale dei prezzi degli altri negozi e' il workflow
+  (costante in `src/sito.py`, oggi +5%), dal piu' conveniente. In fondo c'e' il link a `/fuori/` (il vecchio riquadro
+  «Dove Peck costa di piu'» e la costante `N_COSTA_DI_PIU` non ci sono piu'). L'aggiornamento settimanale dei prezzi degli altri negozi e' il workflow
   descritto in «Aggiornamento automatico»; i prezzi di Peck del delivery si aggiornano solo a mano.
 - «Come funziona» ha la sezione «Confronto prezzi» (abbinamento, livelli, al kg, prodotti solo nelle box, robots.txt e
   agenti AI, aggiornamento).
@@ -398,6 +399,22 @@ di Peck, «non disponibile» se il negozio non la ha piu', nota sul prezzo franc
 l'offerta **piu' bassa fra i negozi che la vendono**, preferendo la stessa annata di Peck (se nessuno la ha in vendita si usa
 l'ultima vista, e la riga dice «non disponibile»): `riferimento()` in `src/sito.py`. Per l'Angolo delle occasioni contano solo
 i negozi con la bottiglia in vendita e la differenza (al litro) deve essere al massimo `SOGLIA_OCCASIONE`.
+
+**Fuori da via Spadari (`/fuori/`, `docs/fuori.json`).** Il contrario dell'Angolo delle occasioni. Righe prese da quelle di
+`/prezzi/` (stesse funzioni: `carica_confronti_cibo`, `carica_offerte_vini`, `costruisci_righe_prezzi`), poi filtrate da
+`righe_fuori()` in `src/sito.py`: cibo **solo «stesso prodotto» o «molto simile»** con due prezzi veri (mai «simile», «da verificare a mano»
+o `alternative_7.csv`), vini con `confrontabile = si` e almeno un negozio con la bottiglia in vendita (Tannico, Callmewine, Millesima,
+Xtrawine; prima la stessa annata, poi la piu' bassa); solo dove Peck costa **almeno `SOGLIA_FUORI` = 20%** in piu' al kg o al litro.
+Risparmio in euro = prezzo di Peck x differenza / (100 + differenza), cioe' sulla quantita' che vende Peck al prezzo unitario di fuori;
+in % = differenza / (100 + differenza). Ordine: per categoria (Dispensa; vini per tipo e paese) e poi dal risparmio maggiore in euro;
+si puo' ordinare anche per % o per nome. In cima: numero di prodotti, risparmio mediano (anche per cibo e vino), i 5 risparmi piu'
+grandi (la stessa bottiglia scritta due volte nella carta conta una volta); poi i filtri (categoria, regione del vino, dove si compra,
+«solo lo stesso prodotto», «senza avvertenze», ordine). Ogni riga: foto (stessa logica di Dispensa / Enoteca, con i ritagli), prezzo di
+Peck e di fuori, risparmio, badge di somiglianza, «Compra da ...» (link al negozio), link alla nostra pagina, e le **avvertenze** ricavate
+dalle note (`avvisi_cibo()`: prezzo in offerta, vendita solo in confezioni multiple, forse non acquistabile online, negozio estero,
+formato diverso; per il vino: annata diversa entro 2 anni, Millesima = sito francese con IVA francese). Spedizione sempre esclusa;
+i prezzi di Peck (delivery e carta) si aggiornano solo a mano. Si disegna con il codice di `/prezzi/` in `docs/app.js` (attributo
+`data-fuori`), 40 righe alla volta. Oggi: 393 prodotti (31 di cibo, 362 di vino), risparmio mediano -29% (53 euro).
 
 **Prezzi confrontati (`/prezzi/`).** Tutti i confronti (733: 56 di cibo, di cui 12 «da un altro produttore»; 677 di vino) in una
 lista a righe: foto, nome, prezzo di Peck, prezzi altrove e dove, differenza al kg o al litro con una barra (verde se

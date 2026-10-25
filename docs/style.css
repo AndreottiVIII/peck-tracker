@@ -581,3 +581,25 @@ ul.prezzi { margin-top: .5rem; }
 .gruppo-mappa li { margin: .3rem 0; }
 .sezione-titolo { margin-top: 2rem; }
 @media (max-width: 520px) { .strato { flex: 1 1 40%; padding: .5rem .5rem; font-size: .76rem; } .strato .meta { display: block; } }
+
+/* ---- Fuori da via Spadari ---- */
+.sottotitolo { font-family: var(--corsivo); font-style: italic; font-size: 1.25rem; color: var(--marrone); margin: 0 0 1rem; }
+.v-fuori { color: #17622f; }
+.fuori .occ-extra { margin-top: .1rem; }
+.fuori .occ-extra .attenzione { margin: 0 0 .35rem; font-size: .84rem; }
+.fuori .occ-extra .gruppo-bottoni { margin: .5rem 0; align-items: center; gap: .5rem 1rem; }
+.fuori .occ-extra > .meta:last-child { font-size: .78rem; }
+.fuori .occ-nome .badge-sim { margin: .15rem 0 .2rem; }
+.fuori .occ-diff .meta { font-size: .8rem; }
+.top-titolo { margin: 1.6rem 0 .3rem; font-size: 1.15rem; }
+.top-fuori { list-style: none; margin: 0 0 1.4rem; padding: 0; border-top: 2px solid var(--marrone); }
+.top-fuori li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: .2rem .7rem; align-items: center; padding: .6rem .1rem; border-bottom: 1px solid var(--linea); }
+.top-fuori .top-n { font-weight: 900; color: var(--marrone); font-size: 1.1rem; }
+.top-fuori p { margin: 0; }
+.top-fuori .nome { font-weight: 700; line-height: 1.3; }
+.top-fuori .top-r { text-align: right; line-height: 1.25; }
+.top-fuori .top-r b { display: block; font-size: 1.15rem; color: #17622f; font-weight: 900; }
+@media (min-width: 800px) {
+  .fuori .occ { grid-template-columns: 72px minmax(0, 2fr) minmax(0, 2.6fr) minmax(0, 1.4fr); }
+  .fuori .occ > .occ-extra { grid-column: 2 / -1; }
+}
