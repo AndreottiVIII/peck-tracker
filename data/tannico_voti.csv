@@ -35,6 +35,7 @@
 155169,https://www.tannico.it/products/brunello-di-montalcino-docg-2020-poggio-di-sotto,2020,esatta,97,,0,2026-10-25
 155168,https://www.tannico.it/products/rosso-di-montalcino-doc-2022-poggio-di-sotto,2022,annata diversa,98,Robert Parker 94/100,1,2026-10-25
 154883,https://www.tannico.it/products/brunello-di-montalcino-docg-2020-poggio-di-sotto,2020,annata diversa,97,,0,2026-10-25
+155779,https://www.tannico.it/products/vino-nobile-di-montepulciano-docg-asinone-2022-poliziano-astuccio,2022,annata diversa,90,Falstaff 95/100; James Suckling 94/100; Gambero Rosso 3 bicchieri,3,2026-10-25
 157011,https://www.tannico.it/products/maremma-toscana-merlot-doc-baffonero-2020-rocca-di-frassinello,2020,annata diversa,85,,0,2026-10-25
 155518,https://www.tannico.it/products/maremma-toscana-merlot-doc-baffonero-2020-rocca-di-frassinello,2020,annata diversa,85,,0,2026-10-25
 161888,https://www.tannico.it/products/toscana-rosso-igt-tenuta-di-trinoro-2021-tenuta-di-trinoro-vini-franchetti,2021,esatta,93,Antonio Galloni 98/100,1,2026-10-25
@@ -85,7 +86,6 @@
 180584,https://www.tannico.it/products/barbaresco-docg-2022-magnum-produttori-del-barbaresco,2022,annata diversa,92,,0,2026-10-25
 180783,https://www.tannico.it/products/chianti-classico-riserva-docg-2019-castell-in-villa,2019,annata diversa,82,,0,2026-10-25
 181922,https://www.tannico.it/products/brunello-di-montalcino-docg-v-v-2021-le-ragnaie,2021,annata diversa,90,Robert Parker 96/100,1,2026-10-25
-181923,https://www.tannico.it/products/brunello-di-montalcino-docg-2021-le-ragnaie,2021,annata diversa,90,Robert Parker 94/100,1,2026-10-25
 185895,https://www.tannico.it/products/barolo-villero-docg-2022-giacomo-fenocchio,2022,annata diversa,93,,0,2026-10-25
 185913,https://www.tannico.it/products/alpilles-rouge-2016-domaine-de-trevallon,2016,annata diversa,90,,0,2026-10-25
 192552,https://www.tannico.it/products/etna-rosso-doc-a-rina-2024-girolamo-russo,2024,annata diversa,91,Robert Parker 92/100,1,2026-10-25
@@ -132,15 +132,13 @@
 271613,https://www.tannico.it/products/morellino-di-scansano-docg-roccapesta-2024-roccapesta,2024,esatta,85,,0,2026-10-25
 275445,https://www.tannico.it/products/costa-toscana-cabernet-franc-igt-auritea-2019-tenuta-podernovo-tenute-lunelli,2019,esatta,84,,0,2026-10-25
 283327,https://www.tannico.it/products/amarone-della-valpolicella-classico-doc-2015-bertani-cassetta-di-legno,2015,annata diversa,96,James Suckling 100/100; Bibenda 5 grappoli,2,2026-10-25
-283328,https://www.tannico.it/products/amarone-della-valpolicella-classico-doc-2015-bertani-cassetta-di-legno,2015,annata diversa,96,James Suckling 100/100; Bibenda 5 grappoli,2,2026-10-25
+283328,https://www.tannico.it/products/amarone-della-valpolicella-classico-docg-2015-magnum-bertani-cassetta-di-legno,2015,annata diversa,94,James Suckling 100/100; Bibenda 5 grappoli,2,2026-10-25
 283368,https://www.tannico.it/products/montepulciano-d-abruzzo-doc-2023-emidio-pepe,2023,esatta,91,,0,2026-10-25
 284098,https://www.tannico.it/products/brunello-di-montalcino-docg-canalicchio-di-sopra-2020-canalicchio-di-sopra,2020,annata diversa,95,,0,2026-10-25
-284103,https://www.tannico.it/products/alto-adige-lagrein-riserva-doc-gries-2023-terlan,2023,esatta,94,,0,2026-10-25
 284105,https://www.tannico.it/products/alto-adige-lagrein-riserva-doc-porphyr-2023-terlan,2023,esatta,97,,0,2026-10-25
-284106,https://www.tannico.it/products/alto-adige-lagrein-riserva-doc-porphyr-2023-terlan,2023,esatta,97,,0,2026-10-25
 284118,https://www.tannico.it/products/brunello-di-montalcino-riserva-docg-2019-poggio-di-sotto,2019,annata diversa,97,,0,2026-10-25
 284120,https://www.tannico.it/products/brunello-di-montalcino-docg-2020-poggio-di-sotto,2020,annata diversa,97,,0,2026-10-25
-284122,https://www.tannico.it/products/brunello-di-montalcino-riserva-docg-2019-poggio-di-sotto,2019,annata diversa,97,,0,2026-10-25
+284122,https://www.tannico.it/products/brunello-di-montalcino-riserva-docg-2018-magnum-poggio-di-sotto,2018,annata diversa,97,Robert Parker 97/100,1,2026-10-25
 284123,https://www.tannico.it/products/brunello-di-montalcino-docg-2020-biondi-santi,2020,esatta,93,,0,2026-10-25
 284125,https://www.tannico.it/products/brunello-di-montalcino-riserva-docg-2018-biondi-santi,2018,annata diversa,94,,0,2026-10-25
 284201,https://www.tannico.it/products/barolo-docg-2022-elio-altare,2022,esatta,88,,0,2026-10-25
@@ -153,7 +151,6 @@
 364632,https://www.tannico.it/products/langhe-nebbiolo-doc-ester-canale-2023-giovanni-rosso,2023,esatta,95,,0,2026-10-25
 364844,https://www.tannico.it/products/etna-rosso-doc-il-vino-dei-vigneri-2025-i-vigneri,2025,esatta,80,,0,2026-10-25
 370673,https://www.tannico.it/products/brunello-di-montalcino-docg-2021-le-chiuse,2021,esatta,89,,0,2026-10-25
-370674,https://www.tannico.it/products/brunello-di-montalcino-docg-2021-le-chiuse,2021,esatta,89,,0,2026-10-25
 372988,https://www.tannico.it/products/barbaresco-docg-2023-giuseppe-cortese,2023,esatta,90,,0,2026-10-25
 156068,https://www.tannico.it/products/toscana-bianco-igt-testamatta-2022-bibi-graetz,2022,annata diversa,94,,0,2026-10-25
 160863,https://www.tannico.it/products/collio-chardonnay-doc-2023-borgo-del-tiglio,2023,annata diversa,92,,0,2026-10-25
@@ -189,7 +186,6 @@
 283295,https://www.tannico.it/products/meursault-les-perrieres-1er-cru-aoc-2018-domaine-des-comtes-lafon,2018,annata diversa,98,Antonio Galloni 96/100,1,2026-10-25
 283366,https://www.tannico.it/products/trebbiano-d-abruzzo-doc-2024-emidio-pepe,2024,esatta,80,,0,2026-10-25
 283410,https://www.tannico.it/products/chateauneuf-du-pape-blanc-2021-chateau-de-beaucastel-famille-perrin,2021,annata diversa,81,,0,2026-10-25
-284110,https://www.tannico.it/products/alto-adige-sauvignon-doc-winkl-2024-terlan,2024,annata diversa,93,,0,2026-10-25
 284112,https://www.tannico.it/products/alto-adige-terlano-pinot-bianco-riserva-doc-vorberg-2023-terlan,2023,esatta,94,,0,2026-10-25
 284113,https://www.tannico.it/products/alto-adige-doc-cuvee-terlaner-2025-terlan,2025,esatta,90,,0,2026-10-25
 284114,https://www.tannico.it/products/alto-adige-terlano-chardonnay-doc-kreuth-2024-terlan,2024,esatta,90,,0,2026-10-25
@@ -264,6 +260,7 @@
 156344,https://www.tannico.it/products/passito-di-pantelleria-doc-bukkuram-sole-d-agosto-2023-marco-de-bartoli,2023,annata diversa,93,,0,2026-10-25
 156314,https://www.tannico.it/products/porto-lbv-2020-w-j-graham-s,2020,annata diversa,90,,0,2026-10-25
 193849,https://www.tannico.it/products/malvasia-delle-lipari-riserva-doc-2021-hauner-0-5l,2021,esatta,92,,0,2026-10-25
+211801,https://www.tannico.it/products/passito-di-pantelleria-ben-rye-2023-donnafugata-0-375l-astuccio,2023,esatta,98,Robert Parker 95/100,1,2026-10-25
 222060,https://www.tannico.it/products/porto-colheita-2008-niepoort-astuccio,2008,esatta,93,,0,2026-10-25
 249612,https://www.tannico.it/products/alto-adige-moscato-rosa-doc-2024-franz-haas-0-5l,2024,esatta,91,,0,2026-10-25
 284245,https://www.tannico.it/products/passito-di-pantelleria-doc-bukkuram-sole-d-agosto-2023-marco-de-bartoli,2023,esatta,93,,0,2026-10-25

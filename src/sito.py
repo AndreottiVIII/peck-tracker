@@ -28,6 +28,8 @@ viene mai pubblicato.
 Legge:  data/prodotti.csv, elementi.csv, indirizzi.csv, altre_origini.csv, aziende.csv,
         vini.csv (compresi gli attributi di degustazione), cantine.csv, vini_nelle_box.csv,
         link_controllati.csv (se c'e': i bottoni dei link rotti non si mostrano),
+        delivery_dispensa.csv (se c'e': prezzo e foto del servizio delivery per i prodotti abbinati;
+        lo scrive src/delivery_dispensa.py),
         data/raw/prodotto_*.html (per le foto) e data/raw/winerim/vini_p*.json (per le foto delle bottiglie).
 """
 
@@ -60,6 +62,8 @@ FOTO_PECK_HOST = "https://shop.peck.it/"
 FOTO_WINERIM_PREFISSO = "https://app.winerim.com/images/wines/"
 LINK_WINERIM_PREFISSO = "https://web.winerim.com/enotecapeck/wines/"
 DATA_FOTOGRAFIA = "2026-10-24"
+DATA_DELIVERY = "2026-10-25"          # il giorno in cui abbiamo guardato il catalogo del servizio delivery
+FONTE_DELIVERY = "dal servizio delivery di Peck, 25 ottobre 2026"
 AVVISO = "Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita."
 
 # ---------------------------------------------------------------------------
@@ -429,6 +433,19 @@ class Aziende:
 # Costruzione dei dati del cibo
 # ---------------------------------------------------------------------------
 
+def carica_delivery():
+    """data/delivery_dispensa.csv -> {chiave Dispensa: riga}. Se il file non c'e', nessun abbinamento."""
+    if not (DATI / "delivery_dispensa.csv").exists():
+        return {}
+    return {r["chiave_dispensa"]: r for r in leggi_csv("delivery_dispensa")}
+
+
+def prezzo_delivery(dv):
+    """('6 € (180 g)', '44 € al kg'): il prezzo come lo mostriamo, dal campo unita (KG = al kg, PZ = a confezione)."""
+    p = euro_it(float(dv["prezzo"]))
+    return f"{p} al kg" if dv["unita"] == "KG" else f"{p} ({dv['formato']})"
+
+
 def costruisci_cibo():
     prodotti = leggi_csv("prodotti")
     elementi = leggi_csv("elementi")
@@ -496,6 +513,15 @@ def costruisci_cibo():
     for nome in ordine:
         e = elem[nome]
         e["disegno"] = "" if e["foto_tipo"] == "prodotto" else disegno_di(nome, e["categoria"])
+    # --- servizio delivery di Peck: prezzo e, se c'e', la foto del prodotto (collegata, mai copiata)
+    delivery = carica_delivery()
+    for nome in ordine:
+        e = elem[nome]
+        dv = delivery.get(e["id"])
+        e["delivery"] = dv
+        if dv and dv["foto_url"]:
+            e["foto"], e["foto_tipo"], e["foto_da"] = dv["foto_url"], "delivery", "servizio delivery di Peck"
+            e["disegno"] = ""
 
     # --- province mancanti (comune -> provincia dagli altri dati)
     comune_prov = {}
@@ -678,7 +704,7 @@ def costruisci_cibo():
             "id": e["id"], "nome": e["nome"], "nome_originale": e["nome_originale"],
             "categoria": e["categoria"], "stato": e["stato"], "regioni": e["regioni"],
             "foto": e["foto"], "foto_tipo": e["foto_tipo"], "foto_da": e["foto_da"],
-            "disegno": e["disegno"],
+            "disegno": e["disegno"], "delivery": e["delivery"],
             "box": [id_box[u] for u in e["box"] if u in id_box], "origini": e["origini"],
         })
     id_el = {n: elem[n]["id"] for n in ordine}
@@ -781,22 +807,35 @@ def url_tannico_ricerca(termini):
 
 
 def carica_tannico():
-    """id vino -> (url, nota_annata) per i vini con scheda su Tannico (esatta o annata diversa).
-    nota_annata e' "" se l'annata e' quella giusta. Gli altri vini non compaiono: per loro il
-    bottone apre la ricerca. Il file e' prodotto da src/tannico.py."""
+    """id vino -> (url, nota_annata, formato_tannico) per i vini con scheda su Tannico.
+    nota_annata e' "" se l'annata e' quella giusta. formato_tannico e' "" se il formato e' lo stesso di Peck
+    (esatta o annata diversa); se invece Tannico ha SOLO un altro formato (corrispondenza "da controllare" con
+    la sola nota «formato diverso») il vino e' collegato lo stesso, ma con il formato scritto, per esempio
+    "0,75 L". Gli altri vini non compaiono: per loro il bottone apre la ricerca. Il file e' prodotto da
+    src/tannico.py."""
     try:
         righe = leggi_csv("tannico")
     except FileNotFoundError:
         return {}
+
+    def anno_di(t):
+        m = re.search(r"(?:19|20)\d\d", t["titolo_tannico"] or "")
+        if not m:  # il titolo a volte non ha l'anno, l'indirizzo si' (...-2022)
+            m = re.search(r"(?<=-)(?:19|20)\d\d(?=-|$)", t["url_tannico"].rstrip("/"))
+        return m.group(0) if m else ""
+
     out = {}
     for t in righe:
         if t["corrispondenza"] == "esatta" and t["url_tannico"]:
-            out[t["id"]] = (t["url_tannico"], "")
+            out[t["id"]] = (t["url_tannico"], "", "")
         elif t["corrispondenza"] == "annata diversa" and t["url_tannico"]:
-            m = re.search(r"(?:19|20)\d\d", t["titolo_tannico"] or "")
-            if not m:  # il titolo a volte non ha l'anno, l'indirizzo si' (...-2022)
-                m = re.search(r"(?<=-)(?:19|20)\d\d(?=-|$)", t["url_tannico"].rstrip("/"))
-            out[t["id"]] = (t["url_tannico"], m.group(0) if m else "un’altra annata")
+            out[t["id"]] = (t["url_tannico"], anno_di(t) or "un’altra annata", "")
+        elif t["corrispondenza"] == "da controllare" and t["url_tannico"]:
+            m = re.fullmatch(r"formato diverso \(Peck [\d/]+ ml, Tannico (\d+) ml\)", t["nota"] or "")
+            if m:
+                anno = anno_di(t)
+                out[t["id"]] = (t["url_tannico"], anno if anno and t["annata"] and anno != t["annata"] else "",
+                                litri_it(int(m.group(1)) / 1000) + " L")
     return out
 
 
@@ -852,6 +891,38 @@ def carica_voti():
     return out
 
 
+def litri_it(x):
+    """0.75 -> '0,75', 1.5 -> '1,5', 3.0 -> '3' (stesso formato di litriIt in app.js)."""
+    return f"{x:g}".replace(".", ",")
+
+
+FORMATI_CORTI = {"Mezza bottiglia (37,5 cl)": "Mezza", "Bottiglia da 50 cl": "Piccola", "Bottiglia da 1 litro": "Litro",
+                 "Rehoboam (5 L)": "Rehoboam", "Set / cassa": "Set"}
+
+
+def nome_corto(nome):
+    """Il nome del formato come lo scriviamo sul chip: «Magnum», «Mezza», «Bottiglia»..."""
+    return FORMATI_CORTI.get(nome, nome)
+
+
+def chip_formato_dopo(f):
+    c = chip_formato(f) if f else ""
+    return " " + c if c else ""
+
+
+def chip_formato(f):
+    """Il formato di una riga prezzo: «Magnum · 1,5 L». Evidenziato (chip giallo) dal magnum in su; vuoto se non si sa."""
+    litri, nome = f[5], f[6]
+    if not nome:
+        return ""
+    testo = f"{nome} · {litri_it(litri)} L" if litri is not None else nome
+    classe = "fmt" + (" grande" if litri is not None and litri >= 1.5 and nome != "Set" else
+                      " set" if nome == "Set" else " piccolo" if litri is not None and litri < 0.75 else
+                      " solito" if litri == 0.75 else "")
+    titolo = f' title="{H(f[4])}"' if f[4] else ""
+    return f'<span class="{classe}"{titolo}>{H(testo)}</span>'
+
+
 def costruisci_vini(box_per_nome):
     righe = leggi_csv("vini")
     tannico = carica_tannico()
@@ -905,9 +976,10 @@ def costruisci_vini(box_per_nome):
             w["d"] = f"{r['id']}-{sl}"                                    # cartella della pagina
             w["tt"] = termini_vino(r["cantina"], r["nome"])               # parole per Vivino / Wine-Searcher
             if r["id"] in tannico:                                        # scheda Tannico (altrimenti: ricerca)
-                w["tn"], w["ta"] = tannico[r["id"]]
-                if not w["ta"]:
-                    del w["ta"]
+                w["tn"], w["ta"], w["tf"] = tannico[r["id"]]             # url, annata diversa, formato diverso
+                for k in ("ta", "tf"):
+                    if not w[k]:
+                        del w[k]
             v = voti.get(r["id"])
             if v and v["bollino"]:                                        # voti dalla scheda Tannico
                 ap, at = r["annata"].strip(), (v["anno"] or "").strip()
@@ -940,11 +1012,15 @@ def costruisci_vini(box_per_nome):
             prezzo = None
         if prezzo is not None and prezzo <= 0:
             prezzo = None
+        litri = float(r["litri"]) if r.get("litri") else None
+        nota = "; ".join(x for x in r["nota"].split("; ") if x and not x.startswith("formato da:"))
         w["f"].append([r["variante"] or r["formato"] or "", r["formato"], prezzo,
-                       1 if r["in_stock"] == "si" else 0, r["nota"]])
+                       1 if r["in_stock"] == "si" else 0, nota, litri, nome_corto(r.get("formato_nome", ""))])
     for w in vini.values():
-        # prezzo principale: bottiglia da 750 ml, se c'e' e ha prezzo; se no il primo prezzo
-        bott = [f for f in w["f"] if f[1] == "750ml" and f[2] is not None]
+        # prezzo principale: bottiglia da 0,75 L, se c'e' e ha prezzo; se no il primo prezzo.
+        # I formati sono in ordine di grandezza (i calici in coda): una riga per formato.
+        w["f"].sort(key=lambda f: (f[5] is None, f[5] or 0))
+        bott = [f for f in w["f"] if f[5] == 0.75 and f[2] is not None]
         con = [f for f in w["f"] if f[2] is not None]
         w["pr"] = (bott or con or [[None, None, None]])[0][2]
     lista = sorted(vini.values(), key=lambda w: w["id"])
@@ -1011,7 +1087,7 @@ def costruisci_vini(box_per_nome):
 
 def json_vini(vini):
     """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
-    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "vb", "vn", "vy")
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "tf", "vb", "vn", "vy")
     return {
         "meta": vini["meta"],
         "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
@@ -1126,7 +1202,8 @@ def immagine_cibo(it, r):
     """Il disegno nostro (docs/disegni/) se il prodotto non ha una foto propria, se no la foto di Peck."""
     d = it.get("disegno")
     if not d:
-        return foto_html(it["foto"], "Foto di " + it["nome"] + " dal sito Peck")
+        dove = "dal servizio delivery di Peck" if it.get("foto_tipo") == "delivery" else "dal sito Peck"
+        return foto_html(it["foto"], "Foto di " + it["nome"] + " " + dove)
     return (f'<div class="foto disegno"><img src="{r}disegni/{d}.svg" width="200" height="200" '
             f'alt="Disegno: {H(DISEGNI_NOMI.get(d, d))}" loading="lazy" decoding="async"></div>')
 
@@ -1202,7 +1279,7 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
 <footer class="piede">
   <div class="contenitore">
     <p class="avviso-fondo">{H(AVVISO)}</p>
-    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (shop.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
+    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (shop.peck.it e delivery.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
     <p><a href="{r}come-funziona/">Come funziona</a> · <a href="{REPO}" target="_blank" rel="noopener noreferrer">Dati e codice su GitHub{sr_nuova_scheda()}</a> · Fotografia dei dati: {data_lunga(DATA_FOTOGRAFIA)}</p>
   </div>
 </footer>
@@ -1343,6 +1420,32 @@ def prepara_cibo(dispensa, box, produttori):
     return az, items, boxes
 
 
+def prezzo_scheda(it):
+    """La riga 'Prezzo Peck: 6 € (180 g)' sotto il nome, solo per i prodotti trovati nel delivery."""
+    dv = it.get("delivery")
+    if not dv:
+        return ""
+    return (f'<span class="prezzo-peck" title="Prezzo {H(FONTE_DELIVERY)}">'
+            f'Prezzo Peck: {H(prezzo_delivery(dv))}</span>')
+
+
+def blocco_prezzo(it):
+    """Il prezzo nella pagina del prodotto, con la fonte e (se il formato e' un altro) la spiegazione."""
+    dv = it.get("delivery")
+    if not dv:
+        return ""
+    avviso = ""
+    if dv["corrispondenza"] != "esatta":
+        avviso = (f'<p class="meta">Attenzione: il formato è diverso da quello dello shop. '
+                  f'{H(cap(dv["nota"]))}.</p>' if dv["nota"] else
+                  '<p class="meta">Attenzione: il formato è diverso da quello dello shop.</p>')
+    foto = (f" Anche la foto è del servizio delivery di Peck." if it.get("foto_tipo") == "delivery" else "")
+    return (f'<div class="prezzo-pagina"><p class="prezzo-peck-grande">Prezzo Peck: '
+            f'<strong>{H(prezzo_delivery(dv))}</strong></p>'
+            f'<p class="meta">{H(cap(FONTE_DELIVERY))}.{foto} I prezzi cambiano; qui nessuno vende niente.</p>'
+            f'{avviso}</div>')
+
+
 def voce_prodotto(it, az, r):
     chi, dove, stato = chi_fa(it, az)
     regioni = "|" + "|".join(it["regioni"]) + "|"
@@ -1353,7 +1456,7 @@ def voce_prodotto(it, az, r):
             f'<a class="scheda" href="{r}prodotto/{it["id"]}/">'
             f'{immagine_cibo(it, r)}'
             f'<div class="corpo"><div class="col-a"><span class="cat">{H(cap(it["categoria"]))}</span>'
-            f'<p class="nome">{H(it["nome"])}</p></div>'
+            f'<p class="nome">{H(it["nome"])}</p>{prezzo_scheda(it)}</div>'
             f'<p class="meta"><span class="col-b">{chi}</span>{dove_html}</p>'
             f'<div class="col-d">{badge(stato)}</div></div></a></li>')
 
@@ -1469,6 +1572,7 @@ def pagina_prodotto(it, az, boxes, r):
 <p class="etichetta">{H(cap(it["categoria"]))}</p>
 <h1>{H(it["nome"])}</h1>
 <p class="originale">Nome su Peck: {H(it["nome_originale"])}</p>
+{blocco_prezzo(it)}
 {nota_foto}
 <p>{badge(it["stato"])} {piu}</p>
 </div>
@@ -1654,7 +1758,10 @@ def bottoni_punteggi(w, classe="bottone secondario piccolo"):
 def bottone_tannico(w, classe):
     if "tn" in w:
         a = f'<a class="{classe}" href="{H(w["tn"])}" target="_blank" rel="noopener noreferrer">Tannico{sr_nuova_scheda()}</a>'
-        if "ta" in w:
+        if "tf" in w:   # Tannico ha solo un altro formato (per esempio la 0,75 L per un magnum)
+            a += (f'<span class="nota-tannico meta">su Tannico c’è la {H(w["tf"])}'
+                  + (f', annata {H(w["ta"])}' if "ta" in w else "") + '</span>')
+        elif "ta" in w:
             a += f'<span class="nota-tannico meta">su Tannico c’è l’annata {H(w["ta"])}</span>'
         return a
     return (f'<a class="{classe}" href="{H(url_tannico_ricerca(w["tt"]))}" target="_blank" rel="noopener noreferrer">'
@@ -1708,13 +1815,13 @@ def scheda_vino(w, r):
     pagina = f"{r}vino/{w['d']}/"
     c = w["cantina"]
     formati = [f for f in w["f"] if f[2] is not None]
-    principale = next((f for f in formati if f[2] == w["pr"]), None)
+    principale = next((f for f in formati if f[5] == 0.75), formati[0] if formati else None)
     altri = [f for f in formati if f is not principale]
-    prezzo = euro_it(w["pr"]) if w["pr"] is not None else '<span class="meta">Prezzo non indicato</span>'
+    prezzo = (euro_it(w["pr"]) + chip_formato_dopo(principale)) if w["pr"] is not None else '<span class="meta">Prezzo non indicato</span>'
     elenco = ""
     if altri:
         elenco = '<ul class="formati">' + "".join(
-            f"<li>{H(cap(f[0] or f[1]))}{(' ' + H(f[1])) if f[1] and f[0] else ''}: {euro_it(f[2])}</li>" for f in altri) + "</ul>"
+            f"<li>{chip_formato(f) or H(cap(f[0] or f[1]))} {euro_it(f[2])}</li>" for f in altri) + "</ul>"
     return (f'<article class="scheda vino">'
             f'{foto_html(url_foto_vino(w), "Bottiglia: " + w["n"] + (" " + w["a"] if w["a"] else ""), "vino")}'
             f'<div class="corpo"><div class="col-a"><p class="tipo-riga">{tipo_chip(w["tipo"])}'
@@ -1739,9 +1846,13 @@ def pagina_enoteca(V):
         'min="0" step="1" inputmode="numeric" placeholder="da"></div>'
         '<div class="campo"><label for="f-pmax">Prezzo fino a (€)</label><input type="number" id="f-pmax" name="pmax" '
         'min="0" step="1" inputmode="numeric" placeholder="fino a"></div>' +
+        ctl_select("fmt", "Formato", [("bottiglia", "Bottiglia 0,75 L"), ("piccoli", "Mezza e piccoli (sotto 0,75 L)"),
+                                      ("litro", "Bottiglia da 1 litro"), ("magnum", "Magnum 1,5 L"),
+                                      ("grandi", "Grandi formati (3 L e oltre)"), ("set", "Set e casse")], vuoto="Tutti i formati") +
         ctl_spunta("tan", "Su Tannico", "") +
         ctl_spunta("voto", "Con voto", "") +
         ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
+                                     ("litro-su", "Prezzo al litro: dal più basso"),
                                      ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia"),
                                      ("voto-giu", "Voto: dal più alto")],
                    modo="ord", vuoto="Nome"))
@@ -1749,9 +1860,10 @@ def pagina_enoteca(V):
                       for c in V["cantine"])
     return f"""<section>
 <h1 class="titolo-pagina">Enoteca</h1>
-<p class="intro">{num(M["n_vini"])} vini della carta dell’enoteca di Peck, di {M["n_cantine"]} cantine. Ogni vino ha la sua pagina, con il profilo di degustazione; per la scheda completa c’è il link all’enoteca (Winerim). I prezzi sono quelli della fotografia del {data_lunga(M["data"])}.</p>
+<p class="intro">{num(M["n_vini"])} vini della carta dell’enoteca di Peck, di {M["n_cantine"]} cantine. Accanto al prezzo c’è sempre il formato (Bottiglia, Magnum, Jeroboam…) con i litri. Ogni vino ha la sua pagina, con il profilo di degustazione; per la scheda completa c’è il link all’enoteca (Winerim). I prezzi sono quelli della fotografia del {data_lunga(M["data"])}.</p>
 {form_filtri("Filtri: enoteca", ctl_cerca("Cerca un vino, un’uva o una cantina", "per esempio: Barolo, Nebbiolo, Gaja"), campi)}
 {barra_lista(conta_testo(M["n_vini"], "vino", "vini"))}
+<p class="meta nota-ord" id="nota-ord" hidden>Ordinati per prezzo a parità di formato: prima le bottiglie da 0,75 L, poi gli altri formati (dal più piccolo al più grande), ciascuno dal prezzo che hai scelto. Con il filtro «Formato» vedi un formato solo.</p>
 <div class="lista" id="lista" data-enoteca data-json="../vini.json" data-singolare="vino" data-plurale="vini">
 <div class="intestazione-elenco" aria-hidden="true"><span></span><span>Vino</span><span>Cantina</span><span>Dove</span><span>Prezzo</span></div>
 <ul class="griglia"></ul>
@@ -1763,7 +1875,7 @@ def pagina_enoteca(V):
 <details class="elenco-cantine" id="cantine"><summary>Tutte le cantine, in ordine alfabetico ({M["n_cantine"]})</summary>
 <ul class="colonne">{cantine}</ul>
 </details>
-</section>""", f"""I {num(M["n_vini"])} vini della carta dell’enoteca di Peck: cerca per tipo, paese, regione, cantina e prezzo. {AVVISO}"""
+</section>""", f"""I {num(M["n_vini"])} vini della carta dell’enoteca di Peck: cerca per tipo, paese, regione, cantina, formato e prezzo. {AVVISO}"""
 
 
 def pagina_cantina(c, boxes, r):
@@ -1842,14 +1954,18 @@ def pagina_vino(w, V, r, correlati):
     con_nota = any(f[4] for f in w["f"])
     righe_f = ""
     for f in w["f"]:
-        nome_f = cap(f[0] or f[1] or "Formato non indicato") + (f" ({f[1]})" if f[1] and f[0] and f[0] != f[1] else "")
-        righe_f += (f"<tr><td>{H(nome_f)}</td><td>{euro_it(f[2]) if f[2] is not None else 'non indicato'}</td>"
+        nome_f = H(f[6]) if f[6] else H(cap(f[0] or f[1] or "Formato non indicato"))
+        litri_f = f"{litri_it(f[5])} L" if f[5] is not None else "non indicato"
+        righe_f += (f"<tr><td>{nome_f}</td><td>{litri_f}</td>"
+                    f"<td>{euro_it(f[2]) if f[2] is not None else 'non indicato'}</td>"
                     f"<td>{'disponibile' if f[3] else 'non disponibile'}</td>"
                     + (f"<td>{H(f[4])}</td>" if con_nota else "") + "</tr>")
     formati = (f'<section class="sezione"><h2>Formati e prezzi</h2><div class="tab-scorri"><table class="tab">'
-               f'<thead><tr><th>Formato</th><th>Prezzo</th><th>Nella carta</th>' + ('<th>Nota</th>' if con_nota else '') + '</tr></thead>'
+               f'<thead><tr><th>Formato</th><th>Litri</th><th>Prezzo</th><th>Nella carta</th>' + ('<th>Nota</th>' if con_nota else '') + '</tr></thead>'
                f'<tbody>{righe_f}</tbody></table></div>'
-               f'<p class="meta">Prezzi e disponibilità del {data_lunga(M["data"])}: nella carta dell’enoteca possono essere cambiati.</p></section>')
+               f'<p class="meta">Prezzi e disponibilità del {data_lunga(M["data"])}: nella carta dell’enoteca possono essere cambiati. '
+               f'I litri vengono dalla capacità indicata da Winerim o, se c’è, dal formato scritto nel nome del vino; '
+               f'il nome del formato cambia da regione a regione (3 litri sono un Jeroboam in Champagne e un Doppio Magnum a Bordeaux), i litri no.</p></section>')
     # dettagli
     ex = w["ex"]
     dl = ""
@@ -1869,7 +1985,12 @@ def pagina_vino(w, V, r, correlati):
                     f'<p class="meta">Sono indicazioni di massima scritte dalla scheda dell’enoteca, non lette dall’etichetta: '
                     f'per molti vini sono uguali (per esempio la stessa gradazione).</p></section>')
     uve = f"<dt>Uve</dt><dd>{H(', '.join(w['u']))}</dd>" if w["u"] else ""
+    formati_p = [f for f in w["f"] if f[2] is not None]
+    principale = next((f for f in formati_p if f[5] == 0.75), formati_p[0] if formati_p else None)
     prezzo = euro_it(w["pr"]) if w["pr"] is not None else "prezzo non indicato"
+    prezzo_html = prezzo + chip_formato_dopo(principale) if w["pr"] is not None else prezzo
+    if principale and principale[5] not in (None, 0.75):   # nella descrizione: il formato, se non è la bottiglia
+        prezzo = f"{prezzo} ({principale[6]} {litri_it(principale[5])} L)"
     stock = "disponibile" if any(f[3] for f in w["f"]) else "non disponibile"
     # correlati
     corr = ""
@@ -1884,7 +2005,7 @@ def pagina_vino(w, V, r, correlati):
 <p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}</p>
 <h1>{H(w["n"])}</h1>
 <p class="originale"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a> · {H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</p>
-<dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo}</span> · {stock}</dd></dl>
+<dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo_html}</span> · {stock}</dd></dl>
 <div class="gruppo-bottoni">{bottoni_punteggi(w)}
 <a class="bottone piccolo" href="{H(link_winerim)}" target="_blank" rel="noopener noreferrer">Scheda completa in enoteca{sr_nuova_scheda()}</a></div>
 <p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino, Tannico la scheda o una ricerca. Di Vivino e Wine-Searcher non copiamo i voti.</p>
@@ -1937,7 +2058,9 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
     conta = Counter(d["stato"] for d in dispensa)
     VOTI = {"n": sum(1 for w in V["vini"] if "tn" in w),
             "data": next((w["voti"]["data"] for w in V["vini"] if "voti" in w), "2026-10-25")}
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "vini", "cantine", "vini_nelle_box", "tannico_voti"]
+    n_delivery = sum(1 for d in dispensa if d.get("delivery"))
+    n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti"]
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -1973,8 +2096,9 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <ul>
 <li><strong>Lo shop. </strong>Abbiamo letto le {len(box)} pagine dello shop online di Peck e, di ogni prodotto, solo la frase in cui Peck scrive dove è prodotto o confezionato ("Prodotto in via…", "Confezionato da…", il bollo CE degli stabilimenti). Non copiamo ingredienti né descrizioni.</li>
 <li><strong>Le aziende. </strong>Per ogni indirizzo, bollo CE o produttore nominato abbiamo cercato a mano, sul web, chi c’è dietro. Ogni riga ha la sua fonte (registri delle imprese, siti ufficiali, gli elenchi europei degli stabilimenti riconosciuti). Non è un lavoro fatto da un programma.</li>
+<li><strong>Il delivery. </strong>Il servizio delivery di Peck ha un catalogo con prezzi e foto. Per i {n_delivery} prodotti della Dispensa che abbiamo ritrovato lì (nome e formato controllati a mano, uno per uno) mostriamo prezzo e foto, scrivendo ogni volta «{FONTE_DELIVERY}»; se il formato non è lo stesso dello shop (per esempio nel delivery si compra a peso) lo diciamo. La foto è collegata, non copiata. Il resto del catalogo del delivery non è pubblicato qui, e i prezzi cambiano.</li>
 <li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
-<li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì.</li>
+<li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì. Se su Tannico c’è solo un altro formato (per esempio la 0,75 L per un magnum) il bottone lo dice.</li>
 <li><strong>Tannico. </strong>I link a Tannico vengono dal catalogo pubblico dei prodotti di Tannico, abbinato per nome ai nostri vini: {sum(1 for w in V['vini'] if 'tn' in w)} link diretti alla scheda (controllati a campione); per tutti gli altri il bottone «Cerca su Tannico» apre una ricerca sul loro sito.</li>
 <li><strong>I voti. </strong>I voti vengono dalla scheda Tannico del vino abbinato (il «Giudizio di Tannico» e i punteggi dei critici, come li riporta Tannico), raccolti il {data_lunga(VOTI["data"])} solo per i {VOTI["n"]} vini che Tannico vende. Registriamo solo i numeri e il nome del critico, mai il testo delle recensioni. Se la scheda Tannico è di un’altra annata, i voti sono di quell’annata e l’anno è scritto accanto al voto; il bollino con il voto sulle schede compare solo se l’annata di Tannico dista al massimo 2 anni da quella in carta (per i vini senza annata, solo se manca da entrambe le parti). Per le annate più lontane i voti restano nella pagina del vino, ma solo come riferimento. Non copiamo i prezzi di Tannico.</li>
 </ul>
@@ -1999,10 +2123,11 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li>Il bollo CE dice dove sta lo stabilimento, non di chi è: l’azienda va cercata negli elenchi. Alcuni codici non sono bolli sanitari.</li>
 <li>Le righe “non trovata” sono dove la ricerca non è arrivata; si possono riprovare. “Nessuno shop online” vuol dire solo che non l’abbiamo trovato sul sito ufficiale.</li>
 <li>I testi di Peck hanno refusi (per esempio “Ortobello” per “Orbetello”). Le frasi sono copiate com’erano; dove due scritture indicano chiaramente lo stesso posto, le abbiamo unite.</li>
-<li>Quasi nessun prodotto della Dispensa ha una foto tutta sua: Peck mostra solo la foto della box. Al suo posto c’è un nostro disegno, scelto in base al nome; la foto della box si vede nella pagina della box.</li>
+<li>Quasi nessun prodotto della Dispensa ha una foto tutta sua nello shop: Peck mostra solo la foto della box. Per {n_foto_delivery} prodotti la foto viene dal servizio delivery; per gli altri c’è un nostro disegno, scelto in base al nome (la foto della box si vede nella pagina della box).</li>
 <li>Nell’enoteca l’intestazione della carta parla di 1.005 cantine, ma l’elenco pubblico ne mostra {M["n_cantine"]} ({num(M["n_vini"])} vini). Non sappiamo perché: forse sono vini archiviati o nascosti.</li>
 <li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
 <li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
+<li>Il formato di ogni prezzo (Bottiglia, Magnum, Jeroboam…) è scritto in litri, presi dalla capacità indicata da Winerim o, se c’è, dal formato scritto nel nome del vino («Magnum 1,5 LT», «37,5 cl»): quando i due non coincidono vale il nome. Succede in 53 casi (per esempio 27 magnum registrati come bottiglie da 0,75 L) e la nota lo dice. Per 87 vini senza prezzo, quasi tutti di Borgogna, il formato non è indicato e resta vuoto. Un dubbio aperto: il Barbaresco Riserva Rabajà 2019 di Cortese è registrato come magnum ma il nome dice «Rehoboam 5 LT»; l’abbiamo messo a 5 litri, da verificare. I nomi dei formati cambiano da regione a regione (3 litri sono un Jeroboam in Champagne e un Doppio Magnum a Bordeaux): contano i litri. Nell’elenco ordinato per prezzo si confrontano formati uguali.</li>
 <li>I voti sono quelli che Tannico mostra nella scheda del vino abbinato: l’abbinamento è fatto per nome e può sbagliare, e se l’annata è diversa i voti non sono quelli della bottiglia di Peck. I voti dei critici possono riferirsi all’annata “corrente” della scheda. Non tutti i vini li hanno.</li>
 </ul>
 {sezione_link}
@@ -2011,12 +2136,12 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <div class="tab-scorri"><table class="tab"><thead><tr><th>Categoria</th><th>Parole cercate nel nome</th></tr></thead><tbody>{righe_cat}</tbody></table></div>
 
 <h2>Come sono scelti i disegni</h2>
-<p>I prodotti senza una foto tutta loro hanno un disegno. Anche qui decide un programma: cerca nel nome le parole qui sotto (vince la prima riga che trova); se non ne trova, usa il disegno della categoria. Chi ha una foto propria di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tiene la foto.</p>
+<p>I prodotti senza una foto tutta loro (e non trovati nel delivery) hanno un disegno. Anche qui decide un programma: cerca nel nome le parole qui sotto (vince la prima riga che trova); se non ne trova, usa il disegno della categoria. Chi ha una foto propria di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tiene la foto.</p>
 <div class="tab-scorri"><table class="tab"><thead><tr><th>Disegno</th><th>Parole cercate nel nome</th><th>Categoria</th></tr></thead><tbody>{righe_disegni}</tbody></table></div>
 
 <h2>Foto, caratteri e riservatezza</h2>
-<p>I disegni della Dispensa sono nostri; le foto sono quelle delle pagine di Peck.</p>
-<p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (shop.peck.it) e di Winerim. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
+<p>I disegni della Dispensa sono nostri; le foto sono quelle delle pagine di Peck e del suo servizio delivery.</p>
+<p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (shop.peck.it e delivery.peck.it) e di Winerim. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
 
 <h2>Dati e codice</h2>
 <p>Tutto è pubblico: le tabelle (si aprono bene anche con Excel) e i programmi che le costruiscono.</p>

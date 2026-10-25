@@ -170,6 +170,31 @@
     const urlWS = (t, a) => 'https://www.wine-searcher.com/find/' +
       norm(t).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').join('+') + (/^(19|20)\d\d$/.test(a || '') ? '/' + a : '');
 
+    // formato di una riga prezzo: f = [etichetta Winerim, capacità, prezzo, in stock, nota, litri, nome]
+    const litriIt = x => String(x).replace('.', ',');
+    const chipFormato = f => {
+      const litri = f[5], nome = f[6];
+      if (!nome) return '';
+      const classe = 'fmt' + (nome === 'Set' ? ' set' : litri != null && litri >= 1.5 ? ' grande'
+        : litri != null && litri < 0.75 ? ' piccolo' : litri === 0.75 ? ' solito' : '');
+      return `<span class="${classe}"${f[4] ? ` title="${esc(f[4])}"` : ''}>${esc(litri != null ? nome + ' · ' + litriIt(litri) + ' L' : nome)}</span>`;
+    };
+    // categoria del filtro «Formato»
+    const catFormato = f => {
+      const l = f[5];
+      if (f[6] === 'Set') return 'set';
+      if (l == null) return '';
+      if (l < 0.75) return 'piccoli';
+      if (l === 0.75) return 'bottiglia';
+      if (l < 1.5) return 'litro';
+      if (l < 3) return 'magnum';
+      return 'grandi';
+    };
+    // riga che fa da riferimento per il prezzo: bottiglia da 0,75 L, se c'è; altrimenti la prima con prezzo
+    const rigaPrincipale = w => { const p = w.f.filter(f => f[2] != null); return p.find(f => f[5] === 0.75) || p[0] || null; };
+    // riga da confrontare con il filtro Formato attivo (prezzo più basso fra quelle di quella categoria)
+    const rigaPerFormato = (w, fmt) => w.f.filter(f => f[2] != null && catFormato(f) === fmt).sort((a, b) => a[2] - b[2])[0] || null;
+
     const urlTannico = t => 'https://www.tannico.it/search?q=' + t.split(/\s+/).filter(Boolean).map(encodeURIComponent).join('+');
 
     function cardVino(w) {
@@ -180,9 +205,9 @@
         ? `<div class="foto bottiglia"><img src="${esc(fotoUrl)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-ph="vino"></div>`
         : '<div class="foto bottiglia"><div class="segnaposto vino" role="img" aria-label="Foto non disponibile"></div></div>';
       const formati = w.f.filter(f => f[2] != null);
-      const principale = formati.find(f => f[2] === w.pr);
+      const principale = rigaPrincipale(w);
       const altri = formati.filter(f => f !== principale);
-      const elencoFormati = altri.length ? '<ul class="formati">' + altri.map(f => `<li>${esc(cap(f[0] || f[1]))}${f[1] && f[0] ? ' ' + esc(f[1]) : ''}: ${euro(f[2])}</li>`).join('') + '</ul>' : '';
+      const elencoFormati = altri.length ? '<ul class="formati">' + altri.map(f => `<li>${chipFormato(f) || esc(cap(f[0] || f[1]))} ${euro(f[2])}</li>`).join('') + '</ul>' : '';
       const tipo = w.tipo;
       const chip = `<span class="tipo tipo-${tipo.replace(/[^a-z]+/g, '-')}">${esc(tipo === 'liquoroso/fortificato' ? 'liquoroso' : tipo)}</span>`;
       const ext = (url, t) => `<a class="bottone secondario piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${t}<span class="sr"> (si apre in una nuova scheda)</span></a>`;
@@ -192,9 +217,10 @@
         `<h2 class="nome"><a class="vai" href="${pagina}">${esc(w.n)}</a></h2></div>` +
         `<p class="meta"><span class="col-b"><a href="${radice}cantina/${esc(w.cantina.id)}/">${esc(w.cantina.nome)}</a></span>` +
         `<span class="col-c">${esc([w.r, w.paese].filter(Boolean).join(' · '))}</span></p>` +
-        `<div class="col-d"><p class="prezzo">${w.pr != null ? euro(w.pr) : '<span class="meta">Prezzo non indicato</span>'}</p>${elencoFormati}</div>` +
+        `<div class="col-d"><p class="prezzo">${w.pr != null ? euro(w.pr) + (principale && chipFormato(principale) ? ' ' + chipFormato(principale) : '') : '<span class="meta">Prezzo non indicato</span>'}</p>${elencoFormati}</div>` +
         `<div class="bottoni">${ext(urlVivino(tt), 'Vivino')}${ext(urlWS(tt, w.a), 'Wine-Searcher')}` +
-        (w.tn ? ext(w.tn, 'Tannico') + (w.ta ? `<span class="nota-tannico meta">su Tannico c’è l’annata ${esc(w.ta)}</span>` : '')
+        (w.tn ? ext(w.tn, 'Tannico') + (w.tf ? `<span class="nota-tannico meta">su Tannico c’è la ${esc(w.tf)}${w.ta ? ', annata ' + esc(w.ta) : ''}</span>`
+              : w.ta ? `<span class="nota-tannico meta">su Tannico c’è l’annata ${esc(w.ta)}</span>` : '')
               : ext(urlTannico(tt), 'Cerca su Tannico')) + `</div>` +
         `</div></article></li>`;
     }
@@ -207,15 +233,29 @@
       const pmax = S.pmax !== '' && S.pmax != null ? Number(S.pmax) : null;
       const ti = S.tipo ? M.tipi.indexOf(S.tipo) : -1;
       const pi = S.paese ? M.paesi.indexOf(S.paese) : -1;
-      let arr = V.vini.filter(w =>
-        (ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
-        (!can || w.kc.includes(can)) && (!S.tan || w.tn) && (!S.voto || w.vn != null) &&
-        (pmin == null || (w.pr != null && w.pr >= pmin)) && (pmax == null || (w.pr != null && w.pr <= pmax)) &&
-        q.every(t => w.k.includes(t)));
-      const senza = (x, y, f) => (x.pr == null) - (y.pr == null) || f(x, y);   // senza prezzo in fondo
+      // prezzo e formato di riferimento di ogni vino: se c'è il filtro Formato, quello; se no la bottiglia da 0,75 L (o la prima)
+      const rif = w => (S.fmt ? rigaPerFormato(w, S.fmt) : rigaPrincipale(w));
+      let arr = V.vini.filter(w => {
+        if (!((ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
+          (!can || w.kc.includes(can)) && (!S.tan || (w.tn && !w.tf)) && (!S.voto || w.vn != null) &&
+          q.every(t => w.k.includes(t)))) return false;
+        if (S.fmt) {
+          if (S.fmt === 'set' ? !w.f.some(f => f[6] === 'Set') : !w.f.some(f => catFormato(f) === S.fmt)) return false;
+        }
+        if (pmin == null && pmax == null) return true;
+        const r = rif(w);
+        return !!r && (pmin == null || r[2] >= pmin) && (pmax == null || r[2] <= pmax);
+      });
+      // a parità di formato: la riga di riferimento di ogni vino ha un «gruppo» (0 = bottiglia da 0,75 L, poi i litri)
+      for (const w of arr) { const r = rif(w); w._r = r; w._pr = r ? r[2] : null; w._g = r ? (r[5] === 0.75 ? 0 : (r[5] == null ? 99 : r[5])) : 99; }
+      const conFiltro = !!S.fmt;
+      const senza = (x, y, f) => (x._pr == null) - (y._pr == null) || f(x, y);   // senza prezzo in fondo
+      const gruppo = (x, y, f) => conFiltro ? f(x, y) : ((x._g - y._g) || f(x, y));
+      const perLitro = x => (x._pr != null && x._r[5]) ? x._pr / x._r[5] : null;
       const f = {
-        'prezzo-su': (x, y) => senza(x, y, (a, b) => a.pr - b.pr),
-        'prezzo-giu': (x, y) => senza(x, y, (a, b) => b.pr - a.pr),
+        'prezzo-su': (x, y) => senza(x, y, (a, b) => gruppo(a, b, (c, d) => c._pr - d._pr)),
+        'prezzo-giu': (x, y) => senza(x, y, (a, b) => gruppo(a, b, (c, d) => d._pr - c._pr)),
+        'litro-su': (x, y) => (perLitro(x) == null) - (perLitro(y) == null) || (perLitro(x) - perLitro(y)),
         'annata-giu': (x, y) => (Number(y.a) || 0) - (Number(x.a) || 0),
         'annata-su': (x, y) => (Number(x.a) || 9999) - (Number(y.a) || 9999),
         'voto-giu': (x, y) => (x.vn == null) - (y.vn == null) || (y.vn - x.vn) || x.n.localeCompare(y.n, 'it', { numeric: true }),
@@ -226,6 +266,8 @@
     function disegna(daCapo, quanti) {
       const S = leggiStato();
       elenco = filtraVini(S);
+      const notaOrd = document.getElementById('nota-ord');
+      if (notaOrd) notaOrd.hidden = !(String(S.ord || '').startsWith('prezzo') && !S.fmt);
       const n = elenco.length;
       scrittoConteggio(n);
       vuoto.hidden = n !== 0;

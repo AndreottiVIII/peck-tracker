@@ -330,3 +330,22 @@ ul.voti { list-style: none; margin: .6rem 0; padding: 0; display: grid; gap: .35
 ul.voti li { display: flex; gap: .6rem; align-items: baseline; border-bottom: 1px solid #e4dcc8; padding-bottom: .35rem; }
 ul.voti .fonte { flex: 0 0 11rem; max-width: 55%; font-weight: 600; }
 .avviso-annata { background: var(--giallo-chiaro); border-left: 4px solid var(--giallo); padding: .5rem .75rem; margin: .6rem 0; }
+
+/* Prezzo del servizio delivery di Peck (solo per i prodotti ritrovati nel delivery) */
+.prezzo-peck { font-size: .84rem; font-weight: 700; color: var(--marrone); }
+.prezzo-pagina { margin: .8rem 0 .4rem; padding: .6rem .9rem; border-left: 4px solid var(--giallo); background: var(--giallo-chiaro); }
+.prezzo-pagina p { margin: .15rem 0; }
+.prezzo-peck-grande { font-size: 1.15rem; }
+
+/* Formato di un vino: «Magnum · 1,5 L» accanto al prezzo; giallo pieno dal magnum in su */
+.fmt {
+  display: inline-block; font-size: .7rem; font-weight: 800; letter-spacing: .02em; line-height: 1.4; white-space: nowrap;
+  padding: .1rem .5rem; border: 1px solid var(--marrone); border-radius: 999px; background: #fff; color: var(--marrone);
+  vertical-align: middle;
+}
+.fmt.solito { border-color: var(--linea); color: var(--muto); font-weight: 700; }
+.fmt.piccolo { background: var(--giallo-chiaro); }
+.fmt.grande { background: var(--giallo); border: 2px solid var(--marrone); font-size: .74rem; }
+.fmt.set { background: var(--marrone); color: var(--giallo); }
+.formati li { margin-top: .25rem; color: var(--testo); font-weight: 700; }
+.nota-ord { margin: 0 0 .8rem; padding: .5rem .75rem; background: var(--giallo-chiaro); border-left: 4px solid var(--giallo); }

@@ -20,13 +20,17 @@ Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
   prodotti i 46 articoli dello shop (passo 1).
 - `aziende.csv`: le aziende dietro quegli indirizzi, bolli CE e produttori nominati, 100 righe con
   la fonte e quanto siamo sicuri (passo 2).
-- `vini.csv`: i 3.071 vini della carta dell'enoteca, una riga per formato (3.082 righe).
+- `vini.csv`: i 3.071 vini della carta dell'enoteca, una riga per formato (3.082 righe), con il formato in litri.
+- `formati.csv`: riepilogo per formato (litri, nome, quante righe, prezzo minimo e massimo).
 - `cantine.csv`: le 820 cantine della carta, con quante etichette hanno.
 - `vini_nelle_box.csv`: i produttori di vino nominati nelle box dello shop, confrontati con la carta.
 - `tannico.csv` e `tannico_voti.csv`: il vino di Tannico abbinato a ogni vino della carta e i voti presi dalla sua
   scheda (vedi "La carta dei vini" e "Il sito").
 - `link_controllati.csv` (e `link_verifica_manuale.csv`): l'esito del controllo dei link ai siti, agli
   shop e alle fonti delle aziende (vedi "Il controllo dei link").
+- `delivery_dispensa.csv`: i 60 prodotti della Dispensa ritrovati nel servizio delivery di Peck, con
+  prezzo, formato e indirizzo della foto (vedi "Il servizio delivery di Peck"). Il catalogo intero del
+  delivery **non** e' pubblicato: sta solo sul computer in `data/locale/` (escluso da git).
 
 ## Passo 1: dove viene prodotto quello che Peck vende online
 
@@ -162,11 +166,13 @@ pubblica di Winerim (una richiesta alla volta, con 2 secondi di pausa) in `data/
 scrive:
 
 - `vini.csv`: 3.082 righe per 3.071 vini, una riga per formato. Colonne: `id`, `nome`, `annata`,
-  `tipo`, `codice_paese`, `paese`, `regione`, `cantina`, `uve`, `formato`, `variante`,
-  `prezzo_euro`, `in_stock`, `link`, `nota`, poi il profilo di degustazione da 0 a 5 come lo scrive
+  `tipo`, `codice_paese`, `paese`, `regione`, `cantina`, `uve`, `formato`, `variante`, `litri`,
+  `formato_nome`, `prezzo_euro`, `in_stock`, `link`, `nota`, poi il profilo di degustazione da 0 a 5 come lo scrive
   Winerim (`intensita`, `freschezza`, `dolcezza`, `tannicita`, `fruttato`, `affinamento`; vuoto se
   non indicato) e, dalla scheda di ogni vino, `gradazione`, `temperatura_servizio`, `bere_da`,
   `bere_fino_a`, `picco_da`, `picco_a`, `abbinamenti` (tradotti in italiano).
+- `formati.csv`: per ogni formato (litri e nome) il numero di righe di `vini.csv` e il prezzo minimo e
+  massimo. Vedi «Il formato di ogni prezzo» qui sotto.
 - `cantine.csv`: 820 cantine con paese, regioni, numero di etichette (totale e per tipo: rossi,
   bianchi, spumanti, dolci, rosati, liquorosi) e prezzo minimo e massimo.
 - `vini_nelle_box.csv` (scritto da `src/vini_box.py`): i 13 produttori di vino nominati nelle box
@@ -182,6 +188,24 @@ si pubblica, e **non vengono copiati** ne' nei CSV ne' nel sito: per quelli il s
 «Scheda completa in enoteca». Nei dati strutturati molti valori sono di massima (per esempio circa un
 terzo dei vini ha gradazione 13,5): il sito lo dice.
 
+**Il formato di ogni prezzo.** `litri` (0,375, 0,75, 1,5, 3, 6...) e `formato_nome` si ricavano, in ordine, dalla
+capacita' del prezzo (`750ml`...), dalla variante di Winerim (`magnum`, `jeroboam`...), dalla scheda del vino e
+dal testo del nome e del sottotitolo («Magnum 1,5 LT», «37,5 cl», «Bottiglia 1 LT», «5L»); la fonte e' scritta in
+`nota` («formato da: capacità+variante»). Quando non concordano vale il litraggio scritto nel nome: la
+capacita' di Winerim e' un menu a tendina e le varianti `jeroboam`, `doble-magnum` e `matusalem` sono
+contenitori generici. Sono 53 righe (27 magnum registrati come 750 ml, 5 da 1 L, 8 da 37,5 cl segnate 500 ml,
+alcuni grandi formati...) e 8 righe 750 ml a prezzo 0 accanto a un magnum (segnaposto, tenute a 0,75 L).
+Nomi: 3 L = Jeroboam (Champagne e resto del mondo) ma Doppio Magnum a Bordeaux; 6 L = Mathusalem (Impériale a
+Bordeaux); 5 L = «Rehoboam (5 L)» come scrive la carta. Le casse e i set hanno i litri totali. Restano senza
+litri 90 righe: 87 vini senza prezzo e senza formato nel nome (quasi tutti Borgogna) e 3 prezzi al calice.
+Dubbio aperto: Cortese Barbaresco Riserva Rabajà 2019 (id 165585) e' registrato come magnum ma il nome dice
+«Rehoboam 5 LT»: messo a 5 L, da verificare.
+Sul sito il formato e' un chip accanto al prezzo (giallo dal magnum in su, «Magnum · 1,5 L»), la tabella «Formati e
+prezzi» ha una colonna Litri, e l'Enoteca ha il filtro «Formato» (`?fmt=bottiglia|piccoli|litro|magnum|grandi|set`)
+e l'ordine «Prezzo al litro»; l'ordine per prezzo mette prima le bottiglie da 0,75 L e poi gli altri formati
+(o confronta un formato solo, se il filtro e' attivo). Nel `vini.json` ogni formato e' `[etichetta Winerim,
+capacita', prezzo, in stock, nota, litri, nome]`.
+
 Qualche numero: le cantine con piu' etichette sono Gaja (68), Domaine de La Romanee-Conti (67),
 Tenuta San Guido (64), Giacomo Conterno (56) e Chateau d'Yquem (47). Per paese, la Francia ha 1.607
 righe e l'Italia 1.233. Non salviamo foto ne' testi descrittivi.
@@ -194,6 +218,50 @@ righe e l'Italia 1.233. Non salviamo foto ne' testi descrittivi.
   non compaiono mai fra i vini. Forse sono vini archiviati o nascosti: non lo sappiamo.
 - **E' una fotografia del 24 ottobre 2026.** I prezzi e i vini disponibili cambiano.
 - Il confronto con le box e' fatto per nome: va controllato a occhio dove la corrispondenza non e' esatta.
+
+## Il servizio delivery di Peck
+
+https://delivery.peck.it e' il servizio di consegna di Peck: ha un'area riservata ai clienti con un catalogo di
+503 prodotti (prezzi, formati, foto). Il 25 ottobre 2026 il proprietario del progetto, che e' cliente, ha salvato
+il catalogo dal suo account (nessun programma ha toccato il servizio: i dati sono stati letti dalla pagina gia'
+aperta nel browser). Che cosa e dove:
+
+- `data/locale/delivery_catalogo_2026-10-25.json` (copia in `archivio/`): il catalogo intero, 503 prodotti, con
+  anche ingredienti e testi. **Non si pubblica** (area riservata): `data/locale/` e `archivio/` sono nel `.gitignore`.
+- `archivio/foto_delivery/`: le 469 foto del catalogo (le foto sono pubbliche, senza login), scaricate da
+  `src/delivery_foto.py` con mezzo secondo di pausa. Restano sul computer, mai in `docs/`.
+- `data/delivery_dispensa.csv` (**pubblico**): per ogni prodotto della Dispensa trovato nel delivery,
+  `chiave_dispensa` (l'id usato da `src/sito.py`), `nome_dispensa`, `cod_art`, `nome_delivery`, `prezzo` (euro),
+  `unita` (`PZ` = prezzo a confezione, `KG` = prezzo al kg), `grammatura`, `formato` (come lo scriviamo: `180 g`,
+  `500 ml`, `al kg`), `foto_url` (https://delivery.peck.it/files/img_web/...), `corrispondenza` e `nota`.
+  `corrispondenza` e' `esatta` (stesso prodotto e stesso formato) oppure `stesso prodotto formato diverso`
+  (nel delivery e' un altro formato, o e' venduto a peso). Sono 60 voci: 42 esatte e 18 con formato diverso.
+- `data/locale/delivery_non_in_dispensa.csv` (e `..._excel.csv`, con BOM e punto e virgola per Excel): i 446
+  prodotti del delivery che non sono nella Dispensa, ordinati per reparto, con il percorso della foto sul computer.
+
+`python -I src/delivery_dispensa.py` riscrive questi file: gli abbinamenti sono **fatti a mano**, uno per uno
+(dizionario `ABBINAMENTI` nel programma; si controllano nome, formato e ingredienti, e nel dubbio non si abbina).
+Il programma stampa il confronto dei pesi per rileggerli a occhio. Nel delivery non ci sono vini e superalcolici,
+e mancano anche molti prodotti dello shop (panettoni, cioccolato, pasta secca, tè e caffè...).
+
+**Sul sito**: per i prodotti abbinati la scheda e la pagina del prodotto mostrano la foto del delivery
+(collegata dal server di Peck, mai copiata in `docs/`) al posto del nostro disegno, e "Prezzo Peck: 8 € (180 g)"
+o "36 € al kg", con la fonte «dal servizio delivery di Peck, 25 ottobre 2026». Se il formato non e' lo stesso dello
+shop la pagina lo dice. I prezzi cambiano: sono quelli del giorno in cui abbiamo guardato.
+
+### Limiti del delivery
+
+- Il catalogo e' una fotografia del 25 ottobre 2026 e cambia (prezzi, prodotti, foto).
+- Nel delivery molti prodotti sono venduti a peso (`unita = KG`): il prezzo e' al kg, il campo `grammatura` e' solo
+  il pezzo "tipo" e non va letto come formato. Per i prodotti a confezione (`PZ`) il formato e' scritto nel nome.
+- Qualche campo del delivery e' incoerente con il nome: per esempio le confetture dicono 340 g nel nome e 350 nel
+  campo grammatura, i salametti mignon "550 g" hanno grammatura 350. Si e' tenuto il nome; la `nota` lo dice.
+- Prezzo sospetto: i carciofini mignon da 120 g costano 139 € a confezione (probabilmente un errore del delivery);
+  non sono stati abbinati.
+- Non abbinati per prudenza (il delivery ha qualcosa di simile, ma non siamo sicuri che sia lo stesso prodotto):
+  salmone Orcadi «asse e coltello» (nel delivery «affettato»), olive verdi Bella di Cerignola da banco, coppa e
+  prosciutto crudo a trancio (nel delivery solo affettati), Parmigiano Vacca bianca (nel delivery tre stagionature
+  diverse e la scheda dello shop non dice quale), olio Lorenzo 5 (nel delivery c'e' solo Lorenzo 1).
 
 ## Il controllo dei link
 
@@ -245,15 +313,16 @@ non copiamo punteggi.
 Il bottone **Tannico** viene da `data/tannico.csv` (prodotto da `src/tannico.py`, che scarica il catalogo
 pubblico di Tannico e lo abbina ai vini per nome). Corrispondenza `esatta`: bottone «Tannico» con il link
 alla scheda; `annata diversa`: stesso bottone con la nota «su Tannico c'e' l'annata ...» (l'anno si legge
-da `titolo_tannico`); `da controllare` e `nessuna`: bottone «Cerca su Tannico» che apre la ricerca
+da `titolo_tannico`); `da controllare` con la sola nota «formato diverso (Peck 1500 ml, Tannico 750 ml)»: bottone
+con la nota «su Tannico c'e' la 0,75 L» (chiave `tf`; non conta per il filtro «Su Tannico» ne' per i voti); gli altri `da controllare` e `nessuna`: bottone «Cerca su Tannico» che apre la ricerca
 (`tannico.it/search?q=<cantina + nome>`, stesse parole di Vivino). Nell'Enoteca c'e' il filtro «Su
 Tannico». Non copiamo i prezzi di Tannico. I link diretti stanno anche in `docs/vini.json`
-(chiavi `tn`, `ta`).
+(chiavi `tn`, `ta`, `tf`).
 
 **I voti (Tannico).** `python -I src/tannico.py voti` scarica la scheda prodotto (`/products/<handle>`, che il
 robots.txt di Tannico consente; 3 secondi di pausa, browser finto, se arriva 429 aspetta 60 secondi e rallenta,
 le schede gia' scaricate si saltano, `--forza` le riscarica) di ogni vino abbinato `esatta` o `annata diversa`
-(194 indirizzi per 290 vini; alcuni vini puntano alla stessa scheda), le salva in `data/raw/tannico/prodotti/`
+(195 indirizzi per 287 vini; alcuni vini puntano alla stessa scheda), le salva in `data/raw/tannico/prodotti/`
 (non si pubblica) e scrive `data/tannico_voti.csv`: `id`, `url_tannico`, `annata_tannico`, `corrispondenza`,
 `punteggio_tannico` (il «Giudizio di Tannico», che nel JSON-LD si chiama «Punteggio Tannico»; 0-100),
 `voti_critici` (per esempio `Robert Parker 97/100; Decanter 97/100`, `Bibenda 5 grappoli`, `Jancis Robinson 16/20`),
@@ -276,12 +345,12 @@ rilanciato dopo ogni modifica ai CSV. Non tocca `docs/style.css` e `docs/app.js`
 mano.
 
 **In `docs/` non ci sono foto.** Le immagini dei prodotti e delle bottiglie sono collegate
-direttamente ai server di Peck e di Winerim: il sito le mostra ma non le copia.
+direttamente ai server di Peck (shop e delivery) e di Winerim: il sito le mostra ma non le copia.
 
 **I disegni della Dispensa sono nostri** (`docs/disegni/*.svg`, 21 illustrazioni scritte a mano in
 SVG, nei colori del sito). Quasi nessun prodotto ha una foto tutta sua (Peck mostra la foto della box,
 che non fa capire che cosa sia il prodotto), quindi nella Dispensa e nelle pagine prodotto c'e' un
-disegno; la pagina prodotto ha il link "Vedi la foto delle box che lo contengono". Il disegno lo sceglie
+disegno (tranne per i 58 prodotti che hanno una foto nel servizio delivery, vedi sopra); la pagina prodotto ha il link "Vedi la foto delle box che lo contengono". Il disegno lo sceglie
 `src/sito.py` in base alle parole nel nome (`DISEGNI_PAROLE`, poi il disegno della categoria in
 `DISEGNO_CATEGORIA`); la tabella completa e' anche in "Come funziona". I 10 prodotti con una foto propria
 di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tengono la foto, e le Box regalo
@@ -315,8 +384,14 @@ python -I src/controlla_link.py # link: controlla i link, scrive link_controllat
 python -I src/tannico.py scarica  # Tannico: scarica il catalogo pubblico
 python -I src/tannico.py abbina   # Tannico: abbina i vini, scrive tannico.csv
 python -I src/tannico.py voti     # Tannico: scarica le schede dei vini abbinati (circa 15 minuti), scrive tannico_voti.csv
+python -I src/delivery_foto.py  # delivery: scarica le foto del catalogo salvato (serve data/locale/delivery_catalogo_2026-10-25.json)
+python -I src/delivery_dispensa.py  # delivery: riscrive data/delivery_dispensa.csv e i file in data/locale/
 python -I src/sito.py           # sito: cancella e riscrive tutte le pagine di docs/ (e docs/vini.json)
 ```
+
+Il catalogo del delivery (`data/locale/delivery_catalogo_2026-10-25.json`) non si rigenera con un programma: si salva a
+mano dall'area riservata di un cliente. Senza quel file (per esempio su un altro computer) `delivery_dispensa.csv`
+resta com'e' e `src/sito.py` funziona lo stesso.
 
 `aziende.csv` non si rigenera con un programma: e' la ricerca a mano descritta sopra (dopo il controllo
 dei link si correggono a mano i link rotti). `docs/personale.js` (il logo, solo in locale) non si rigenera e non si pubblica.

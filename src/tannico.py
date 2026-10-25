@@ -135,23 +135,32 @@ FORMATI = [("doppio magnum", 3000), ("double magnum", 3000), ("jeroboam", 3000),
            ("mezza bottiglia", 375), ("half bottle", 375)]
 
 
-def formato_da_testo(testo):
-    """Millilitri indicati nel testo (titolo Tannico); 750 se non dice nulla."""
+def formato_esplicito(testo):
+    """Millilitri indicati nel testo (titolo o indirizzo Tannico), oppure None se il testo non dice nulla.
+    Prima i litri scritti con le cifre ("1,5l", "0.375l", "37,5 cl", "150cl", "(1l)"), poi le parole
+    (magnum, jeroboam = 3 L, mathusalem = 6 L...)."""
     t = norm(testo)
+    for m in re.finditer(r"(?<![0-9])(\d{1,3})(?: (\d{1,3}))?\s?(cl|ml|lt|l)\b", t):
+        v = float(m.group(1) + ("." + m.group(2) if m.group(2) else ""))
+        ml = v * 10 if m.group(3) == "cl" else v if m.group(3) == "ml" else v * 1000
+        if 100 <= ml <= 30000:
+            return int(round(ml))
     for nome, ml in FORMATI:
         if re.search(r"\b" + nome + r"\b", t):
             return ml
-    m = re.search(r"\b(\d+) (\d+) ?(l|lt)\b", t)  # 0,75 l  ->  "0 75 l"
-    if m:
-        return int(round(float(m.group(1) + "." + m.group(2)) * 1000))
-    m = re.search(r"\b(\d+)\s?(?:(cl)|(ml)|(l|lt))\b", t)
-    if m:
-        v = float(m.group(1))
-        return int(v * 10 if m.group(2) else v if m.group(3) else v * 1000)
-    return 750
+    return None
+
+
+def formato_da_testo(testo):
+    """Millilitri indicati nel testo; 750 se non dice nulla."""
+    return formato_esplicito(testo) or 750
 
 
 def formato_peck(riga):
+    """Millilitri della riga Peck: dalla colonna `litri` di vini.csv (src/vini.py); se manca la colonna,
+    dalla capacita' e dalla variante. None = formato sconosciuto (vini senza prezzo e senza indicazioni)."""
+    if "litri" in riga:
+        return int(round(float(riga["litri"]) * 1000)) if riga["litri"] else None
     m = re.match(r"(\d+)ml", riga.get("formato", ""))
     if m:
         return int(m.group(1))
@@ -197,10 +206,11 @@ def tok_cantina(c):
     return out
 
 
-def spezza_titolo(titolo, vendor):
-    """Titolo Tannico -> (parte vino, parte cantina, annata, formato)."""
+def spezza_titolo(titolo, vendor, handle=""):
+    """Titolo Tannico -> (parte vino, parte cantina, annata, formato). Il formato si cerca nel titolo e,
+    se il titolo tace, nell'indirizzo (handle): 750 ml solo se nessuno dei due dice altro."""
     t = titolo.strip()
-    formato = formato_da_testo(t)
+    formato = formato_esplicito(t) or formato_esplicito(handle) or 750
     parti = t.rsplit(" - ", 1)
     vino, casa = (parti[0], parti[1]) if len(parti) == 2 else (t, "")
     casa = re.sub(r"\([^)]*\)", " ", casa)
@@ -212,7 +222,7 @@ def spezza_titolo(titolo, vendor):
 class Prodotto:
     def __init__(self, p):
         self.p = p
-        self.vino, self.casa, self.anno, self.formato = spezza_titolo(p["title"], p["vendor"])
+        self.vino, self.casa, self.anno, self.formato = spezza_titolo(p["title"], p["vendor"], p["handle"])
         self.t_vino = tokens(self.vino)
         self.t_casa = tokens(self.casa)
         self.t_casa_dist = {w for w in self.t_casa if w not in CANTINA_GENERICA}
@@ -303,14 +313,18 @@ def abbina():
     print(len(prodotti), "prodotti Tannico utilizzabili,", len(generici), "parole generiche")
     with open(VINI, encoding="utf-8-sig", newline="") as f:
         righe = list(csv.DictReader(f))
-    vini = {}  # un vino per id; i formati sono raccolti
+    vini = {}  # un vino per id; i formati (ml) sono raccolti. None = formato sconosciuto
     for r in righe:
-        v = vini.setdefault(r["id"], {"riga": r, "formati": set()})
-        if r["variante"] != "calice":
+        v = vini.setdefault(r["id"], {"riga": r, "formati": set(), "calice": False})
+        if r["variante"] == "calice":
+            v["calice"] = True
+        elif r["prezzo_euro"] not in ("0", "0.0") and formato_peck(r):  # prezzo 0 = segnaposto; formato vuoto = sconosciuto
             v["formati"].add(formato_peck(r))
     uscita = []
     for v in vini.values():
-        riga, formati = v["riga"], v["formati"] or {750}
+        riga = v["riga"]
+        formati = v["formati"] or {750}  # solo calici o formato sconosciuto: si assume la bottiglia (con nota)
+        assunto = not v["formati"] and not v["calice"]
         tc_alt = tok_cantina(riga["cantina"])
         cand = {}
         for a in tc_alt:
@@ -332,8 +346,8 @@ def abbina():
 
             def chiave(x):
                 liv, jac, cant, pr = x
-                return (liv == "uguale" and cant, liv == "uguale", pr.anno == a_peck,
-                        pr.formato in formati, pr.formato == 750, jac, -distanza(pr),
+                return (liv == "uguale" and cant, liv == "uguale", pr.formato in formati,
+                        pr.anno == a_peck, pr.formato == 750, jac, -distanza(pr),
                         pr.p["available"] is True)
             migliori.sort(key=chiave, reverse=True)
             liv, jac, cant, pr = migliori[0]
@@ -341,7 +355,10 @@ def abbina():
             stesso_formato = pr.formato in formati
             note = []
             if not stesso_formato:
-                note.append(f"formato diverso (Tannico {pr.formato} ml)")
+                peck = "/".join(f"{x:g}" for x in sorted(formati))
+                note.append(f"formato diverso (Peck {peck} ml, Tannico {pr.formato} ml)")
+            elif assunto:
+                note.append("formato Peck non indicato (assunto 750 ml)")
             if not cant:
                 note.append("cantina simile ma non identica")
             if liv == "simile":
