@@ -1,30 +1,47 @@
 """Nuove fonti di voti dei critici per i vini della carta Peck -> data/voti_extra.csv.
 
-    python -I src/voti_consenso_fonti.py jb_sitemap       # robots.txt + sitemap dei prodotti di Justerini & Brooks
-    python -I src/voti_consenso_fonti.py jb_abbina        # pre-abbinamento coi nomi negli indirizzi -> candidati.csv
-    python -I src/voti_consenso_fonti.py jb_scarica [N]   # scarica SOLO le schede candidate (pausa 3 s), tiene solo i voti
-    python -I src/voti_consenso_fonti.py farr_sitemap      # robots.txt + sitemap di Farr Vintners
-    python -I src/voti_consenso_fonti.py farr_scarica [N]  # scarica le ~5000 schede vino (pausa 2 s, riprende da dove era), tiene solo titolo e voti
-    python -I src/voti_consenso_fonti.py ws_scarica       # Wine Spectator Top 100 (Zenodo 7930185, CC BY)
+    python -I src/voti_consenso_fonti.py maroni_sitemap   # robots.txt + sitemap dei vini di Luca Maroni (lucamaroni.it)
+    python -I src/voti_consenso_fonti.py maroni_abbina    # pre-abbinamento coi nomi negli indirizzi -> candidati.csv
+    python -I src/voti_consenso_fonti.py maroni_scarica [N]  # scarica SOLO le schede candidate (pausa 2 s), tiene il punteggio
+    python -I src/voti_consenso_fonti.py bd_sitemap       # robots.txt + sitemap dei vini di Bettane+Desseauve (mybettanedesseauve.fr)
+    python -I src/voti_consenso_fonti.py bd_abbina        # pre-abbinamento coi nomi negli indirizzi -> candidati.csv
+    python -I src/voti_consenso_fonti.py bd_scarica [N]   # scarica SOLO le schede candidate (pausa 3 s), tiene la nota su 20
+    python -I src/voti_consenso_fonti.py vinf_sitemap     # robots.txt + sitemap dei prodotti di Vinfolio
+    python -I src/voti_consenso_fonti.py vinf_abbina      # pre-abbinamento coi nomi negli indirizzi -> candidati.csv
+    python -I src/voti_consenso_fonti.py vinf_scarica [N] # scarica SOLO le schede candidate (pausa 2 s), tiene critico, voto, data
+    python -I src/voti_consenso_fonti.py ws_scarica       # Wine Spectator Top 100 2003-2020 (Zenodo 7930185, CC BY 4.0)
     python -I src/voti_consenso_fonti.py estrai           # legge tutto quello che c'e' su disco -> data/voti_extra.csv
     python -I src/voti_consenso_fonti.py verifica [N]     # N righe a caso da controllare a mano
     python -I src/voti_consenso_fonti.py riepilogo
 
-Fonti e regole (la decisione sul perche' e' in JOURNAL.md):
-  - Justerini & Brooks (justerinis.com, Diageo): la scheda di ogni annata porta l'elenco dei critici
-    (testata, recensore, voto, data) nei dati della pagina. robots.txt: tutto aperto, nessuna sezione per
-    agenti AI. Condizioni d'uso: niente divieto esplicito di accesso automatico, ma «copiare» e' vietato
-    fuori dall'uso personale non commerciale: qui si tengono SOLO nome del critico e numero (mai le note di
-    degustazione), per un lavoro non commerciale. Pausa 3 s, User-Agent che dice chi siamo.
-  - Farr Vintners (farrvintners.com): schede con punteggi storici dei critici. robots.txt: aperto per le schede.
-  - Wine Spectator Top 100 2003-2020 (Zenodo 7930185, licenza CC BY 4.0, base dati di terzi): il sito
-    di Wine Spectator vieta ClaudeBot nel suo robots.txt, qui NON si visita: si usa la copia con licenza
-    aperta (solo 100 vini l'anno). Fonte da togliere con FONTI_DA_ESCLUDERE se non la si vuole.
-  - Global Wine Score: il dominio e' in vendita (HugeDomains), servizio e API non piu' raggiungibili.
-  - CellarTracker: la WAF risponde con la sfida anti-bot anche a robots.txt: non si tocca.
+Fonti USATE qui:
+  - Bettane+Desseauve (mybettanedesseauve.fr, «Catalogue des vins notes»): 130.000 vini con la «NOTE DE L'EXPERT»
+    su 20 (dalle annate recenti su 100), visibile senza abbonamento; la fonte principale per la Borgogna. Il robots.txt nomina ClaudeBot
+    e lo ammette (Allow: /). Si tiene solo la nota (scala 20 o 100; il 20 nel consenso e' x5), mai commenti o note del domaine.
+    Le condizioni del sito vietano la riproduzione dei contenuti: qui si tengono solo il numero e il link.
+  - Vinfolio (vinfolio.com, commerciante americano di vini fini): la scheda di ogni annata porta nei suoi dati
+    (__NEXT_DATA__) le recensioni dei critici con voto, scala e data (piu' una media del negozio). Il robots.txt
+    nomina ClaudeBot e lo ammette (Allow: /), nessun Crawl-delay. Si tengono critico, voto, scala e data
+    (mai i commenti); per ogni testata la recensione piu' recente.
+  - Luca Maroni (lucamaroni.it): ogni scheda vino ha «Punteggio Dettagliato» (consistenza + equilibrio +
+    integrita' = voto su 100). Il robots.txt di lucamaroni.it nomina ClaudeBot e lo ammette con Crawl-delay 2 s
+    (rispettato anche qui); l'area riservata e' esclusa. Si tengono solo punteggio ed edizione dell'Annuario.
+    ATTENZIONE: i punteggi Maroni sono tarati diversamente dagli altri critici (misurano la «piacevolezza»), e per
+    questo nel consenso entrano ma sono segnalati.
+  - Wine Spectator Top 100 2003-2020 (Zenodo «Database Wine and Scores», licenza CC BY 4.0, base dati di terzi):
+    il sito di Wine Spectator vieta ClaudeBot nel suo robots.txt, qui NON si visita: si usa la copia con licenza
+    aperta (solo i 100 vini di ogni anno). Si toglie con FONTI_DA_ESCLUDERE se non la si vuole.
+
+Fonti ESAMINATE E NON USATE (motivo, e cosa si puo' fare) sono in JOURNAL.md e nel rapporto:
+  Global Wine Score (dominio in vendita), CellarTracker (WAF anti-bot anche su robots.txt), Decanter/Vinous/Jancis/
+  Wine Advocate/Burghound (a pagamento), Wine Spectator/Wine Enthusiast sito (robots/captcha), Hedonism (schede senza
+  punteggi), siti dei produttori (nessun elenco di punteggi per annata), DoctorWine (solo 706 note, 28 vini).
+  Justerini & Brooks e Farr Vintners (con punteggi dei critici per annata, robots.txt aperto) sono scaricati
+  dall'altro filone di lavoro, `src/voti_enoteche.py` (secondo giro): finiscono in `data/voti_enoteche.csv`.
 
 Regole comuni: robots.txt riletto e rispettato (anche le sezioni per ClaudeBot/anthropic-ai), niente accessi
-con login, niente aggiramento di blocchi (403/429 persistenti = si ferma), grezzo in data/raw/voti/<fonte>/.
+con login, niente aggiramento di blocchi (403/429 persistenti = si ferma), grezzo in data/raw/voti/<fonte>/,
+User-Agent che dice chi siamo, pausa fissa, solo nomi e numeri (mai i testi delle recensioni).
 """
 import csv
 import hashlib
@@ -57,12 +74,14 @@ MAX_DISTANZA_ANNATA = 2
 FONTI_DA_ESCLUDERE = set()      # es. {"Wine Spectator Top 100"} per toglierla dall'uscita
 
 CAMPI = ["id", "fonte", "critico_o_tipo", "voto", "scala", "annata_fonte", "corrispondenza", "url",
-         "licenza_note", "voto_testo", "recensore", "nome_fonte", "data_raccolta"]
+         "licenza_note", "voto_testo", "recensore", "nome_fonte", "data_raccolta", "data_recensione"]
 
-LIC_JB = ("Dato fattuale (nome del critico + punteggio) letto dalla scheda pubblica di Justerini & Brooks; "
-          "nessun testo copiato; uso non commerciale; robots.txt aperto")
-LIC_FARR = ("Dato fattuale (nome del critico + punteggio) letto dalla scheda pubblica di Farr Vintners; "
-            "nessun testo copiato; uso non commerciale; robots.txt aperto per le schede")
+LIC_MARONI = ("Dato fattuale (punteggio) letto dalla scheda pubblica di lucamaroni.it; nessun testo copiato; "
+              "uso non commerciale; robots.txt consente ClaudeBot con Crawl-delay 2 s; tarato diversamente dagli altri critici")
+LIC_VINF = ("Dato fattuale (nome del critico + punteggio) letto dalla scheda pubblica di vinfolio.com; "
+            "nessun testo copiato; uso non commerciale; robots.txt ammette ClaudeBot (Allow: /)")
+LIC_BD = ("Dato fattuale (nota dell'esperto su 20) letto dalla scheda pubblica di mybettanedesseauve.fr; nessun testo copiato; "
+          "uso non commerciale; robots.txt ammette ClaudeBot (Allow: /); le condizioni del sito vietano la riproduzione dei contenuti")
 LIC_WS = ("CC BY 4.0 (Zenodo 10.5281/zenodo.7930185, «Database Wine and Scores», dati di Wine Spectator Top 100; "
           "copia di terzi, il sito di Wine Spectator non e' stato visitato)")
 
@@ -238,7 +257,7 @@ def critico_canonico(pubblicazione, recensore):
     return p + (f" ({recensore.strip()})" if recensore and recensore.strip().lower() not in p.lower() else "")
 
 
-# ---------------------------------------------------------------- abbinamento da indirizzi (comune a JB)
+# ---------------------------------------------------------------- abbinamento da indirizzi
 def entrate_slug(urls, estrai):
     """estrai(url) -> (testo, annata|None) oppure None. Restituisce la lista di Slug-compatibili."""
     class S:
@@ -314,195 +333,349 @@ def leggi_candidati(nome):
         return list(csv.DictReader(f))
 
 
-# ---------------------------------------------------------------- Justerini & Brooks
-JB = "justerinis"
-JB_HOST = "www.justerinis.com"
-RX_JB = re.compile(r'\\"vintageName\\":\\"([^"\\]*)\\",\\"scoreText\\":\\"([^"\\]*)\\",\\"tastingNote\\":.*?'
-                   r'\\"dateReviewed\\":\\"([^"\\]*)\\",\\"reviewer\\":\\"([^"\\]*)\\",\\"publication\\":\\"([^"\\]*)\\"', re.S)
+# ---------------------------------------------------------------- Luca Maroni (lucamaroni.it)
+MARONI = "lucamaroni"
+MARONI_HOST = "www.lucamaroni.it"
+PAUSA_MARONI = 2.0
+MARONI_NOME = "Luca Maroni"
+RX_MARONI_DETT = re.compile(r"Punteggio Dettagliato\s+(\d+)\s+Consistenza\s*\+\s*(\d+)\s+Equilibrio\s*\+\s*(\d+)\s+Integrit\S*\s*=\s*(\d+)")
+RX_MARONI_EDIZ = re.compile(r"Edizione\s+(\d{4})")
+RX_MARONI_TIT = re.compile(r"<title>(.*?)</title>", re.S | re.I)
 
 
-def jb_sitemap():
-    rob = prepara_sito(JB, JB_HOST)
-    f = RAW / JB / "sitemap_product.xml"
-    if not f.exists():
-        url = f"https://{JB_HOST}/product/sitemap.xml"
-        if not rob.permesso(url):
-            raise SystemExit("vietato " + url)
-        f.write_bytes(prendi(url, 180))
-    print("jb sitemap ok:", len(jb_urls()), "schede di annata")
+def maroni_sitemap():
+    rob = prepara_sito(MARONI, MARONI_HOST)
+    d = RAW / MARONI
+    idx = d / "sitemap.xml"
+    if not idx.exists():
+        idx.write_bytes(prendi(f"https://{MARONI_HOST}/sitemap.xml"))
+        time.sleep(PAUSA_MARONI)
+    for loc in re.findall(r"<loc>([^<]*sitemap-vini-[^<]*)</loc>", idx.read_text(encoding="utf-8")):
+        f = d / loc.rsplit("/", 1)[1]
+        if not f.exists():
+            if not rob.permesso(loc):
+                print("vietato", loc)
+                continue
+            f.write_bytes(prendi(loc, 180))
+            time.sleep(PAUSA_MARONI)
+    print("maroni sitemap ok:", len(maroni_urls()), "schede vino")
 
 
-def jb_urls():
-    t = (RAW / JB / "sitemap_product.xml").read_text(encoding="utf-8")
-    urls = list(dict.fromkeys(htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", t)))
-    return [u for u in urls if re.match(r"https://www\.justerinis\.com/fine-wines/[^/]+/[^/]+/[^/]+/[^/]+/(?:19|20)\d\d$", u)]
-
-
-def jb_estrai_slug(u):
-    p = urllib.parse.urlsplit(u).path.strip("/").split("/")
-    produttore, vino, anno = p[3], p[4], p[5]
-    testo = (produttore + " " + vino).replace("-", " ")
-    return testo, anno
-
-
-def jb_abbina():
-    vini, prezzo = VA.leggi_vini()
-    slugs = entrate_slug(jb_urls(), jb_estrai_slug)
-    print(len(vini), "vini Peck,", len(slugs), "schede J&B")
-    scrivi_candidati(JB, abbina_slug(vini, prezzo, slugs))
-
-
-def jb_pagina(u):
-    return RAW / JB / "pagine" / nome_file(u)
-
-
-def jb_leggi(url, dati):
-    t = dati.decode("utf-8", errors="replace")
-    titolo = re.search(r"<title>(.*?)</title>", t, re.S)
-    critici, visti = [], set()
-    for vint, voto, data, rec, pub in RX_JB.findall(t):
-        k = (vint, voto, data, rec, pub)
-        if k in visti:
-            continue
-        visti.add(k)
-        critici.append({"annata": vint, "voto": htmllib.unescape(voto), "data": data,
-                        "recensore": htmllib.unescape(rec), "pubblicazione": htmllib.unescape(pub)})
-    return {"url": url, "titolo": htmllib.unescape(titolo.group(1)).strip() if titolo else "",
-            "scaricata": OGGI, "critici": critici}
-
-
-def jb_scarica(limite=None):
+def maroni_urls():
     urls = []
-    for r in leggi_candidati(JB):
+    for f in sorted((RAW / MARONI).glob("sitemap-vini-*.xml")):
+        urls += [htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", f.read_text(encoding="utf-8"))]
+    return list(dict.fromkeys(urls))
+
+
+def maroni_estrai_slug(u):
+    m = re.match(r"https://www\.lucamaroni\.it/vini/\d+-(.+)$", u)
+    if not m:
+        return None
+    a = re.search(r"-((?:19|20)\d\d)$", m.group(1))
+    if not a:
+        return None
+    return m.group(1)[: a.start()].replace("-", " "), a.group(1)
+
+
+def maroni_pagina(u):
+    return RAW / MARONI / "pagine" / nome_file(u)
+
+
+def maroni_abbina():
+    # Maroni valuta soprattutto vini italiani: si abbinano solo i vini italiani della carta (i francesi non ci sono)
+    vini, prezzo = VA.leggi_vini()
+    ita = [v for v in vini if v["codice_paese"] == "IT"]
+    slugs = entrate_slug(maroni_urls(), maroni_estrai_slug)
+    print(len(ita), "vini italiani Peck,", len(slugs), "schede Maroni con annata")
+    scrivi_candidati(MARONI, abbina_slug(ita, prezzo, slugs))
+
+
+def maroni_leggi(url, dati):
+    """Solo titolo, punteggio (e le tre parti), edizione dell'Annuario. Niente altro testo."""
+    t = dati.decode("utf-8", errors="replace")
+    titolo = RX_MARONI_TIT.search(t)
+    testo = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", t)
+    testo = re.sub(r"\s+", " ", htmllib.unescape(re.sub(r"<[^>]+>", " ", testo)))
+    m = RX_MARONI_DETT.search(testo)
+    e = RX_MARONI_EDIZ.search(testo)
+    out = {"url": url, "titolo": htmllib.unescape(titolo.group(1)).strip() if titolo else "",
+           "scaricata": OGGI, "edizione": e.group(1) if e else ""}
+    if m:
+        a, b, c, tot = (int(x) for x in m.groups())
+        out.update({"punteggio": tot, "parti": [a, b, c]})
+    return out
+
+
+def maroni_scarica(limite=None):
+    global PAUSA
+    PAUSA = PAUSA_MARONI
+    urls = []
+    for r in leggi_candidati(MARONI):
         if r["url"] not in urls:
             urls.append(r["url"])
-    scarica_pagine(JB, JB_HOST, urls, jb_pagina, jb_leggi, limite)
+    scarica_pagine(MARONI, MARONI_HOST, urls, maroni_pagina, maroni_leggi, limite)
 
 
-# ---------------------------------------------------------------- Farr Vintners
-FARR = "farr"
-FARR_HOST = "www.farrvintners.com"
-PAUSA_FARR = 2.0
+def righe_maroni():
+    out = []
+    cand = defaultdict(list)
+    if not (RAW / MARONI / "candidati.csv").exists():
+        return out
+    for r in leggi_candidati(MARONI):
+        cand[r["url"]].append(r)
+    for url, rs in cand.items():
+        f = maroni_pagina(url)
+        if not f.exists():
+            continue
+        pag = json.loads(f.read_text(encoding="utf-8"))
+        if pag.get("errore") or "punteggio" not in pag:
+            continue
+        anno_url = url.rsplit("-", 1)[1]
+        for r in rs:
+            out.append({"id": r["id"], "fonte": MARONI_NOME, "critico_o_tipo": "Luca Maroni",
+                        "voto": pag["punteggio"], "scala": "100", "annata_fonte": anno_url,
+                        "corrispondenza": "esatta" if r["distanza"] == "0" else "annata diversa ±2",
+                        "url": url, "licenza_note": LIC_MARONI, "voto_testo": str(pag["punteggio"]),
+                        "recensore": f"Annuario {pag['edizione']}" if pag.get("edizione") else "",
+                        "nome_fonte": pag["titolo"], "data_raccolta": pag.get("scaricata", "")})
+    return out
 
 
-def farr_pagina(u):
-    return RAW / FARR / "pagine" / nome_file(u)
+# ---------------------------------------------------------------- Vinfolio (vinfolio.com)
+VINF = "vinfolio"
+VINF_HOST = "vinfolio.com"
+VINF_NOME = "Vinfolio"
+PAUSA_VINF = 2.0
+RX_NEXT = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
 
-def farr_sitemap():
-    rob = prepara_sito(FARR, FARR_HOST)
-    f = RAW / FARR / "sitemap.xml"
+def vinf_sitemap():
+    rob = prepara_sito(VINF, "www.vinfolio.com")
+    f = RAW / VINF / "sitemap-products.xml"
     if not f.exists():
-        url = f"https://{FARR_HOST}/sitemap.xml"
+        url = f"https://{VINF_HOST}/sitemap-products.xml"
         if not rob.permesso(url):
             raise SystemExit("vietato " + url)
         f.write_bytes(prendi(url, 180))
-    print("farr sitemap ok:", len(farr_urls()), "schede vino")
+    print("vinfolio sitemap ok:", len(vinf_urls()), "schede prodotto")
 
 
-def farr_urls():
-    """Schede vino della sitemap, dalle piu' recenti (id piu' alto) alle piu' vecchie."""
-    t = (RAW / FARR / "sitemap.xml").read_text(encoding="utf-8", errors="replace")
-    urls = list(dict.fromkeys(htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", t)))
-    urls = [u for u in urls if "wine.php?wine=" in u]
-    return sorted(urls, key=lambda u: -int(re.search(r"wine=(\d+)", u).group(1)))
+def vinf_urls():
+    t = (RAW / VINF / "sitemap-products.xml").read_text(encoding="utf-8")
+    return list(dict.fromkeys(htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", t)))
 
 
-RX_FARR_TITOLO = re.compile(r"<title>(.*?)</title>", re.S | re.I)
-RX_FARR_PROD = re.compile(r"View all wines by ([^<]+)</nobr>", re.S)
-RX_FARR_VOTO = re.compile(r'<span class="notranslate wine-score">([^<]*)</span></div><div class="notranslate"><i>([^<]*)</i>')
+def vinf_estrai_slug(u):
+    m = re.match(r"https://vinfolio\.com/product/[0-9a-f]+/((?:19|20)\d\d|nv)-(.+)$", u)
+    if not m:
+        return None
+    return m.group(2).replace("-", " "), ("NV" if m.group(1) == "nv" else m.group(1))
 
 
-def farr_leggi(url, dati):
-    """Solo titolo, produttore e, per ogni nota, voto + chi l'ha dato e quando. Le note di degustazione non si leggono."""
+def vinf_pagina(u):
+    return RAW / VINF / "pagine" / nome_file(u)
+
+
+def vinf_abbina():
+    vini, prezzo = VA.leggi_vini()
+    slugs = entrate_slug(vinf_urls(), vinf_estrai_slug)
+    print(len(vini), "vini Peck,", len(slugs), "schede Vinfolio con annata")
+    scrivi_candidati(VINF, abbina_slug(vini, prezzo, slugs))
+
+
+def vinf_leggi(url, dati):
+    """Dai dati della pagina (__NEXT_DATA__) si tengono SOLO: nome, media del negozio e, per ogni recensione,
+    chi, voto, scala e data. Il commento (testo della recensione) non si legge."""
     t = dati.decode("utf-8", errors="replace")
-    titolo = RX_FARR_TITOLO.search(t)
-    prod = RX_FARR_PROD.search(t)
-    voti = [{"voto": htmllib.unescape(v).strip(), "fonte": htmllib.unescape(f).strip()} for v, f in RX_FARR_VOTO.findall(t)]
-    return {"url": url, "titolo": htmllib.unescape(titolo.group(1)).strip() if titolo else "",
-            "produttore": htmllib.unescape(prod.group(1)).strip() if prod else "",
-            "scaricata": OGGI, "voti": voti}
+    m = RX_NEXT.search(t)
+    if not m:
+        return {"url": url, "errore": "senza dati"}
+    pp = json.loads(m.group(1)).get("props", {}).get("pageProps", {})
+    prod = pp.get("product") or {}
+    revs = []
+    for r in prod.get("reviews") or []:
+        revs.append({"chi": (r.get("reviewer") or {}).get("name", ""), "da": r.get("scoreFrom"), "a": r.get("scoreTo"),
+                     "piu": bool(r.get("scorePlus")), "scala": r.get("scoreScale"),
+                     "data": (r.get("date") or "")[:7]})
+    return {"url": url, "nome": prod.get("name", ""), "media_negozio": prod.get("avgCriticScore"),
+            "scaricata": OGGI, "recensioni": revs}
 
 
-def farr_scarica(limite=None):
+def vinf_scarica(limite=None):
     global PAUSA
-    PAUSA = PAUSA_FARR
-    scarica_pagine(FARR, FARR_HOST, farr_urls(), farr_pagina, farr_leggi, limite)
+    PAUSA = PAUSA_VINF
+    urls = []
+    for r in leggi_candidati(VINF):
+        if r["url"] not in urls:
+            urls.append(r["url"])
+    scarica_pagine(VINF, "www.vinfolio.com", urls, vinf_pagina, vinf_leggi, limite)
 
 
-MESI = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
-                                    "september", "october", "november", "december"], 1)}
-REGIONE_PAESE = {"bordeaux": "FR", "burgundy": "FR", "rhone": "FR", "rhône": "FR", "champagne": "FR", "alsace": "FR",
-                 "loire": "FR", "jura": "FR", "france": "FR", "southern france": "FR", "italy": "IT", "germany": "DE",
-                 "spain": "ES", "portugal": "PT", "california": "US", "usa": "US", "australia": "AU"}
+def critico_da_nome(nome):
+    k = nome.lower()
+    base = k.split("(")[0].strip()
+    if base in PUBBLICAZIONI:
+        return PUBBLICAZIONI[base][0]
+    for chiave, canonico in (("jancis robinson", "Jancis Robinson"), ("neal martin", "Vinous (Neal Martin)"),
+                             ("antonio galloni", "Vinous (Antonio Galloni)"), ("james suckling", "James Suckling"),
+                             ("jeb dunnuck", "Jeb Dunnuck"), ("robert parker", "Robert Parker"),
+                             ("allen meadows", "Burghound"), ("stephen tanzer", "Vinous (Stephen Tanzer)")):
+        if chiave in k:
+            return canonico
+    return nome
 
 
-def farr_critico(testo):
-    """'Robert Parker, Wine Advocate (Mar 03), March 2003' -> (critico canonico, anno, mese) ; None se non e' un critico noto."""
-    parti = [p.strip() for p in testo.split(",")]
-    m = re.search(r"((?:19|20)\d\d)\s*$", testo)
-    anno = int(m.group(1)) if m else 0
-    mese = 0
-    mm = re.search(r"([A-Za-z]+)\s+(?:19|20)\d\d\s*$", testo)
-    if mm:
-        mese = MESI.get(mm.group(1).lower(), 0)
-    chiave = testo.lower()
-    for k, nome in FARR_CRITICI:
-        if k in chiave:
-            return nome, anno, mese
-    return None
-
-
-# cosa si cerca nel testo -> critico come nelle altre fonti (l'ordine conta: i casi piu' specifici prima)
-FARR_CRITICI = [("jancis robinson", "Jancis Robinson"), ("robert parker", "Robert Parker"),
-                ("wine advocate", "Robert Parker"), ("lisa perrotti-brown", "Robert Parker"),
-                ("william kelley", "Robert Parker"), ("neal martin", "Vinous (Neal Martin)"),
-                ("antonio galloni", "Vinous (Antonio Galloni)"), ("vinous", "Vinous"),
-                ("james suckling", "James Suckling"), ("wine spectator", "Wine Spectator"),
-                ("decanter", "Decanter"), ("burghound", "Burghound"), ("allen meadows", "Burghound"),
-                ("jeb dunnuck", "Jeb Dunnuck"), ("stephen tanzer", "Vinous (Stephen Tanzer)"),
-                ("tim atkin", "Tim Atkin"), ("jean-marc quarin", "Jean-Marc Quarin"),
-                ("jane anson", "Jane Anson"), ("wine enthusiast", "Wine Enthusiast"),
-                ("revue du vin", "Revue du Vin de France"), ("bettane", "Bettane+Desseauve"),
-                ("wine cellar insider", "Jeff Leve (The Wine Cellar Insider)"),
-                ("jeff leve", "Jeff Leve (The Wine Cellar Insider)"),
-                ("john gilman", "John Gilman"), ("james halliday", "James Halliday"),
-                ("falstaff", "Falstaff")]
-
-
-def farr_cands():
-    """Una Cand per scheda Farr, con il voto piu' recente di ciascun critico."""
-    cands = []
-    for f in sorted((RAW / FARR / "pagine").glob("*.json")) if (RAW / FARR / "pagine").exists() else []:
+def righe_vinfolio():
+    out = []
+    if not (RAW / VINF / "candidati.csv").exists():
+        return out
+    cand = defaultdict(list)
+    for r in leggi_candidati(VINF):
+        cand[r["url"]].append(r)
+    for url, rs in cand.items():
+        f = vinf_pagina(url)
+        if not f.exists():
+            continue
         pag = json.loads(f.read_text(encoding="utf-8"))
-        if pag.get("errore") or not pag.get("titolo"):
+        if pag.get("errore"):
             continue
-        m = re.match(r"^(.*?)\s+((?:19|20)\d\d)\.\s*Fine Wine from (.+)$", pag["titolo"])
-        if not m or not pag.get("produttore"):
-            continue
-        vino, anno, regione = m.group(1).strip(), m.group(2), m.group(3).strip()
+        anno_url = re.search(r"/((?:19|20)\d\d|nv)-", url).group(1).upper()
+        # per ogni testata si tiene la recensione piu' recente (senza data = la meno recente)
         migliori = {}
-        for v in pag["voti"]:
-            c = farr_critico(v["fonte"])
-            num = re.match(r"\s*(\d+(?:\.\d+)?)", v["voto"])
-            scala_def = "20" if num and float(num.group(1)) <= 20 else "100"
-            val = leggi_voto(v["voto"].replace("/", "-"), scala_def)   # '89/92' e' un intervallo (voto da botte)
-            if not c or not val:
+        for rv in pag["recensioni"]:
+            chi = rv["chi"]
+            if "," in chi:
+                rec, pub = chi.rsplit(",", 1)
+            else:
+                rec, pub = chi, ""
+            nome = critico_canonico(pub.strip(), rec.strip()) if pub.strip() else critico_da_nome(rec.strip())
+            if rv["da"] is None or rv["scala"] not in (100, 20):
                 continue
-            punti, scala, testo = val
-            nome, anno_v, mese_v = c
-            quando = (anno_v, mese_v)
-            if nome not in migliori or quando >= migliori[nome][0]:
-                migliori[nome] = (quando, punti, scala, v["voto"], v["fonte"])
-        if not migliori:
+            a, b = rv["da"], rv["a"]
+            val = (a + b) / 2 if b is not None else float(a)
+            testo = f"{a}-{b}" if b is not None else (f"{a}+" if rv["piu"] else f"{a}")
+            testo += f"/{rv['scala']}"
+            chiave = nome.split("(")[0].strip()
+            if chiave not in migliori or rv["data"] >= migliori[chiave]["data"]:
+                migliori[chiave] = dict(nome=nome, val=val, scala=str(rv["scala"]), testo=testo, rec=rec.strip(),
+                                        data=rv["data"])
+        for m_ in migliori.values():
+            if m_["scala"] == "100" and not 50 <= m_["val"] <= 100:
+                continue
+            if m_["scala"] == "20" and not 10 <= m_["val"] <= 20:
+                continue
+            for r in rs:
+                out.append({"id": r["id"], "fonte": VINF_NOME, "critico_o_tipo": m_["nome"], "voto": round(m_["val"], 2),
+                            "scala": m_["scala"], "annata_fonte": anno_url,
+                            "corrispondenza": "esatta" if r["distanza"] == "0" else "annata diversa ±2",
+                            "url": url, "licenza_note": LIC_VINF, "voto_testo": m_["testo"], "recensore": m_["rec"],
+                            "nome_fonte": pag["nome"], "data_raccolta": pag.get("scaricata", ""),
+                            "data_recensione": m_["data"]})
+    return out
+
+
+# ---------------------------------------------------------------- Bettane+Desseauve (mybettanedesseauve.fr)
+BD = "bettane"
+BD_HOST = "www.mybettanedesseauve.fr"
+BD_NOME = "Bettane+Desseauve"
+PAUSA_BD = 3.0
+RX_BD_NOTA = re.compile(r"NOTE DE L.EXPERT\s*(N/N|\d{1,3}(?:[.,]\d)?)\s*/\s*(20|100)", re.I)
+RX_BD_TIT = re.compile(r"D.tail du vin\s*(?:D.tail du vin)?\s*.\s*Retour\s*(.*?)\s*NOTE DE L.EXPERT", re.I | re.S)
+
+
+def bd_sitemap():
+    rob = prepara_sito(BD, BD_HOST)
+    d = RAW / BD
+    idx = d / "wine-sitemap-index.xml"
+    if not idx.exists():
+        idx.write_bytes(prendi(f"https://{BD_HOST}/wine-sitemap-index.xml"))
+        time.sleep(PAUSA_BD)
+    for loc in re.findall(r"<loc>([^<]+)</loc>", idx.read_text(encoding="utf-8")):
+        f = d / loc.rsplit("/", 1)[1]
+        if not f.exists():
+            if not rob.permesso(loc):
+                print("vietato", loc)
+                continue
+            f.write_bytes(prendi(loc, 180))
+            time.sleep(PAUSA_BD)
+    print("bettane sitemap ok:", len(bd_urls()), "schede vino")
+
+
+def bd_urls():
+    urls = []
+    for f in sorted((RAW / BD).glob("wine-sitemap-[0-9]*.xml")):
+        urls += [htmllib.unescape(u) for u in re.findall(r"<loc>([^<]+)</loc>", f.read_text(encoding="utf-8"))]
+    return list(dict.fromkeys(urls))
+
+
+def bd_estrai_slug(u):
+    m = re.match(r"https://www\.mybettanedesseauve\.fr/vins/([^/]+)/(.+)-((?:19|20)\d\d|nv)-(\d+)/?$", u)
+    if not m:
+        return None
+    return m.group(2).replace("-", " "), ("NV" if m.group(3) == "nv" else m.group(3))
+
+
+def bd_pagina(u):
+    return RAW / BD / "pagine" / nome_file(u)
+
+
+def bd_abbina():
+    vini, prezzo = VA.leggi_vini()
+    slugs = entrate_slug(bd_urls(), bd_estrai_slug)
+    print(len(vini), "vini Peck,", len(slugs), "schede B+D con annata")
+    scrivi_candidati(BD, abbina_slug(vini, prezzo, slugs))
+
+
+def bd_leggi(url, dati):
+    """Solo titolo e nota dell'esperto (su 20). Commento, note del domaine e altri vini non si leggono."""
+    t = dati.decode("utf-8", errors="replace")
+    testo = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", t)
+    testo = re.sub(r"\s+", " ", htmllib.unescape(re.sub(r"<[^>]+>", " ", testo)))
+    m = RX_BD_NOTA.search(testo)
+    tit = RX_BD_TIT.search(testo)
+    out = {"url": url, "titolo": tit.group(1).strip() if tit else "", "scaricata": OGGI}
+    if m and m.group(1).upper() != "N/N":
+        out["nota"] = float(m.group(1).replace(",", "."))
+        out["scala"] = m.group(2)
+    return out
+
+
+def bd_scarica(limite=None):
+    global PAUSA
+    PAUSA = PAUSA_BD
+    urls = []
+    for r in leggi_candidati(BD):
+        if r["url"] not in urls:
+            urls.append(r["url"])
+    scarica_pagine(BD, BD_HOST, urls, bd_pagina, bd_leggi, limite)
+
+
+def righe_bettane():
+    out = []
+    if not (RAW / BD / "candidati.csv").exists():
+        return out
+    cand = defaultdict(list)
+    for r in leggi_candidati(BD):
+        cand[r["url"]].append(r)
+    for url, rs in cand.items():
+        f = bd_pagina(url)
+        if not f.exists():
             continue
-        paese = REGIONE_PAESE.get(regione.lower(), "")
-        voti = [(nome, p, sc, (vt, fonte)) for nome, (q, p, sc, vt, fonte) in migliori.items()]
-        c = VA.Cand(pag["produttore"], vino, anno, paese, voti)
-        c.url = pag["url"]
-        c.titolo = pag["titolo"]
-        cands.append(c)
-    return cands
+        pag = json.loads(f.read_text(encoding="utf-8"))
+        if pag.get("errore") or "nota" not in pag:
+            continue
+        if not (8 <= pag["nota"] <= 20 if pag["scala"] == "20" else 50 <= pag["nota"] <= 100):
+            continue
+        m = re.match(r".*-((?:19|20)\d\d|nv)-\d+/?$", url)
+        anno_url = m.group(1).upper()
+        for r in rs:
+            out.append({"id": r["id"], "fonte": BD_NOME, "critico_o_tipo": "Bettane+Desseauve", "voto": pag["nota"],
+                        "scala": pag["scala"], "annata_fonte": anno_url,
+                        "corrispondenza": "esatta" if r["distanza"] == "0" else "annata diversa ±2",
+                        "url": url, "licenza_note": LIC_BD, "voto_testo": f"{pag['nota']:g}/{pag['scala']}", "recensore": "",
+                        "nome_fonte": pag["titolo"], "data_raccolta": pag.get("scaricata", ""), "data_recensione": ""})
+    return out
 
 
 # ---------------------------------------------------------------- Wine Spectator Top 100 (Zenodo)
@@ -547,61 +720,12 @@ def ws_righe(vini):
 
 
 # ---------------------------------------------------------------- estrazione -> voti_extra.csv
-def righe_jb(vini_id):
-    out = []
-    cand = defaultdict(list)
-    for r in leggi_candidati(JB):
-        cand[r["url"]].append(r)
-    for url, rs in cand.items():
-        f = jb_pagina(url)
-        if not f.exists():
-            continue
-        pag = json.loads(f.read_text(encoding="utf-8"))
-        if pag.get("errore"):
-            continue
-        anno_url = url.rsplit("/", 1)[1]
-        for c in pag["critici"]:
-            if c["annata"] != anno_url:
-                continue
-            v = leggi_voto(c["voto"])
-            if not v:
-                continue
-            voto, scala, testo = v
-            for r in rs:
-                corr = "esatta" if r["distanza"] == "0" else "annata diversa ±2"
-                out.append({"id": r["id"], "fonte": "Justerini & Brooks",
-                            "critico_o_tipo": critico_canonico(c["pubblicazione"], c["recensore"]),
-                            "voto": voto, "scala": scala, "annata_fonte": anno_url, "corrispondenza": corr,
-                            "url": url, "licenza_note": LIC_JB, "voto_testo": testo,
-                            "recensore": c["recensore"], "nome_fonte": pag["titolo"],
-                            "data_raccolta": pag.get("scaricata", "")})
-    return out
-
-
-def righe_farr(vini):
-    cands = farr_cands()
-    if not cands:
-        return []
-    urls = {}
-    for c in cands:
-        urls.setdefault(f"{c.casa} | {c.vino} | {c.anno}", c.url)
-    out = []
-    for r in VA.abbina_fonte(vini, cands, "Farr Vintners", LIC_FARR, lambda x: round(float(x), 1)):
-        if r["corrispondenza"] == "da controllare":
-            continue
-        out.append({"id": r["id"], "fonte": "Farr Vintners", "critico_o_tipo": r["critico/rivista"],
-                    "voto": r["voto"], "scala": r["scala"], "annata_fonte": r["annata_fonte"],
-                    "corrispondenza": "esatta" if r["corrispondenza"] == "esatta" else "annata diversa ±2",
-                    "url": urls.get(r["_nome_fonte"], ""), "licenza_note": LIC_FARR, "voto_testo": r["voto"],
-                    "recensore": "", "nome_fonte": r["_nome_fonte"], "data_raccolta": OGGI})
-    return out
-
-
 def estrai():
     vini, prezzo = VA.leggi_vini()
     righe = []
-    if (RAW / JB / "candidati.csv").exists():
-        righe += righe_jb(None)
+    righe += righe_maroni()
+    righe += righe_vinfolio()
+    righe += righe_bettane()
     if (RAW / WS / "base.xls").exists():
         for r in ws_righe(vini):
             if r["corrispondenza"] == "da controllare":
@@ -612,7 +736,6 @@ def estrai():
                           "url": WS_URL, "licenza_note": LIC_WS, "voto_testo": r["voto"],
                           "recensore": r["critico/rivista"], "nome_fonte": r["_nome_fonte"],
                           "data_raccolta": OGGI})
-    righe += righe_farr(vini)
     righe = [r for r in righe if r["fonte"] not in FONTI_DA_ESCLUDERE]
     # una riga per (vino, fonte, critico, annata_fonte, voto)
     viste, uniche = set(), []
@@ -669,8 +792,10 @@ def verifica(n=30):
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     arg = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
-    fn = {"jb_sitemap": jb_sitemap, "jb_abbina": jb_abbina, "jb_scarica": lambda: jb_scarica(arg),
-          "farr_sitemap": farr_sitemap, "farr_scarica": lambda: farr_scarica(arg),
+    fn = {"bd_sitemap": bd_sitemap, "bd_abbina": bd_abbina, "bd_scarica": lambda: bd_scarica(arg),
+          "vinf_sitemap": vinf_sitemap, "vinf_abbina": vinf_abbina, "vinf_scarica": lambda: vinf_scarica(arg),
+          "maroni_sitemap": maroni_sitemap, "maroni_abbina": maroni_abbina,
+          "maroni_scarica": lambda: maroni_scarica(arg),
           "ws_scarica": ws_scarica, "estrai": estrai, "riepilogo": riepilogo,
           "verifica": lambda: verifica(arg or 30)}.get(cmd)
     if fn:

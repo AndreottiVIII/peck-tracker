@@ -17,6 +17,20 @@ Enoteche (tutte con robots.txt che lascia aperte le schede prodotto, riletto a o
   zachys      Zachys.com (Shopify): blocco HTML "Critic Reviews". Chiede agli agenti di dichiararsi:
               si usa uno User-Agent che dice chi siamo, mai uno da browser.
   xtrawine    Xtrawine.com (Shopify): icone dei premi nella scheda.
+Secondo giro (26/10/2026), stessa procedura (`sitemap_nuove` rilegge i robots.txt; le sitemap sono in data/raw/voti/<nome>/):
+  frw         Fine+Rare (frw.co.uk): `__NEXT_DATA__` con `reviews` (critico, punteggio, scala, data). Il suo robots.txt dice
+              Allow per ClaudeBot, Claude-User, Claude-SearchBot e anthropic-ai.
+  jb          Justerini & Brooks (justerinis.com): JSON-LD Product + `critics` nei dati della pagina (testata, recensore, voto, data).
+  vinatis     Vinatis.it: `product_page_elastic` -> `rewards` («98/100 VINOUS»).
+  farr        Farr Vintners: l'elenco `winelist.php?show=all` (UNA pagina) dice quali vini hanno un punteggio, poi solo le schede
+              `wine.php?wine=N` candidate (voto, critico, testata, mese). Le note scritte da Farr stessa non si contano.
+  moev        Mövenpick Wein (moevenpick-wein.com/it): riga «Valutazioni» (Parker 97+/100 | WeinWisser 18/20...).
+  idealwine   iDealwine: `idw_sitemap` tiene i lotti da 1 bottiglia/1 magnum (uno per vino-annata-formato, urls_fr.txt); la scheda ha
+              `productVintage` con le note (Parker, WS, Decanter, Suckling, Vinous, Burghound, Quarin, Jancis, B+D, RVF).
+In Borgogna, Champagne e Alsazia «1er Cru» / «Grand Cru» devono coincidere fra Peck e il negozio (REGIONI_CRU_STRETTO): altrimenti
+Gevrey-Chambertin villaggio e 1er Cru si scambiano. Per ogni critico, se una scheda ha piu' voti, vale il piu' recente
+(frw, jb, farr: hanno la data). `estrai <nomi>` ricalcola solo quelle fonti e lascia le altre righe del csv come sono;
+`verifica [N] [nomi]` stampa N schede a caso da controllare a mano.
 
 Regole: pausa di 3 s per sito (BBR 10 s), una coda per sito, mai oltre i limiti del robots.txt, mai aggirare
 un blocco (403/429 persistenti = si ferma quel sito). L'abbinamento riusa la normalizzazione di tannico.py e
@@ -308,6 +322,7 @@ COLORI = {"rouge": "rosso", "rosso": "rosso", "red": "rosso", "tinto": "rosso", 
 
 
 CRU = {"cru", "grand", "1er", "premier", "classe"}
+REGIONI_CRU_STRETTO = {"Bourgogne", "Champagne", "Alsace", "Alsazia"}
 
 
 def stesso_vino_slug(v, alts, testo_slug):
@@ -318,6 +333,12 @@ def stesso_vino_slug(v, alts, testo_slug):
     testo_slug = re.sub(r"d(alba|asti|abruzzo|alsazia)", r"", testo_slug)    # d'Alba scritto "dalba" negli indirizzi
     np_, ip = VA.nucleo_stretto(v["nome"], togli)
     nf, i_f = VA.nucleo_stretto(testo_slug, togli)
+    # Borgogna, Champagne, Alsazia: "1er Cru" / "Grand Cru" distinguono vini diversi (Gevrey-Chambertin villaggio e
+    # 1er Cru): se uno dei due lo dice e l'altro no, non e' lo stesso vino (secondo giro, 26/10)
+    if v.get("regione") in REGIONI_CRU_STRETTO:
+        for gruppo in ({"1er", "premier"}, {"grand", "grande"}):
+            if bool(gruppo & np_) != bool(gruppo & nf):
+                return False
     for ins, ign in ((np_, ip), (nf, i_f)):
         # "Grand Cru Classe", "1er Cru": Peck e i negozi li scrivono o li omettono; il nome vero resta richiesto uguale
         for w in CRU & ins:
@@ -982,72 +1003,111 @@ def _mappa_persone(valori):
     return {T.norm(x) for x in valori}
 
 
-P_ADVOCATE = _mappa_persone(["Robert Parker", "Lisa Perrotti-Brown", "William Kelley", "Monica Larner", "Luis Gutierrez",
-                             "Joe Czerwinski", "Kristaps Karklins", "Erin Brooks", "Mark Squires", "Jeannie Cho Lee MW wa"])
-P_VINOUS = _mappa_persone(["Antonio Galloni", "Josh Raynolds", "Stephen Tanzer", "Eric Guido", "Ian D'Agata",
-                           "Rebecca Gibb", "Nicolas Greinacher", "Joaquin Hidalgo", "Yohan Castaing"])
+# persone che firmano per una testata quando la scheda non dice la testata
+P_ADVOCATE = _mappa_persone(["Robert Parker", "William Kelley", "Monica Larner", "Luis Gutierrez", "Joe Czerwinski",
+                             "Kristaps Karklins", "Erin Brooks", "Mark Squires", "David Schildknecht",
+                             "Stephan Reinhardt", "Yohan Castaing"])
+VINOUS_PERSONE = {T.norm(k): v for k, v in {
+    "Antonio Galloni": "Antonio Galloni", "Josh Raynolds": "Josh Raynolds", "Stephen Tanzer": "Stephen Tanzer",
+    "Eric Guido": "Eric Guido", "Ian D'Agata": "Ian D'Agata", "Rebecca Gibb": "Rebecca Gibb MW",
+    "Nicolas Greinacher": "Nicolas Greinacher", "Joaquin Hidalgo": "Joaquín Hidalgo", "Neal Martin": "Neal Martin",
+    "Monica Larner": "Monica Larner", "Luis Gutierrez": "Luis Gutiérrez"}.items()}
 P_SPECTATOR = _mappa_persone(["James Molesworth", "Bruce Sanderson", "Kim Marcus", "Alison Napjus", "James Laube",
                               "Harvey Steiman", "Thomas Matthews", "MaryAnn Worobiec", "Aaron Romano", "Dr. Jim Gordon"])
+JR_TEAM = _mappa_persone(["Julia Harding", "Walter Speller", "Richard Hemming", "James Lawther", "Tamlyn Currin",
+                          "Tim Jackson", "Matthew Hayes", "Ferran Centelles", "Alistair Cooper", "Tom Parker"])
+NOMI_CRITICI.update({"vertdevin": "Vertdevin", "vinum wine magazine": "Vinum", "vinum": "Vinum", "yves beck": "Yves Beck",
+                     "andre kunz": "André Kunz", "drinks business": "The Drinks Business"})
+CASA = ("finerare", "farrvintners", "justerini", "berrybros", "tastingnote")      # note scritte dal negozio: mai critici
 
 
 def critico_da(reviewer, pubblicazione="", data=""):
-    """Nome del critico come negli altri negozi: testate note con il loro nome (Robert Parker per The Wine Advocate,
-    Vinous (Persona)), le altre col nome della persona. None = non si sa chi sia (non si scrive)."""
+    """Nome del critico come negli altri negozi: testate note col loro nome (Robert Parker per The Wine Advocate,
+    Vinous (Persona)), le altre col nome della persona. None = non si sa chi sia, oppure e' il negozio stesso
+    (non si scrive). `data` (AAAA o AAAA-MM) serve solo per Neal Martin e Lisa Perrotti-Brown, che hanno cambiato testata."""
     r = re.sub(r"\s+", " ", htmllib.unescape(reviewer or "")).strip().rstrip(",")
     pb = re.sub(r"\s+", " ", htmllib.unescape(pubblicazione or "")).strip()
+    if not pb and "," in r:
+        r, pb = (x.strip() for x in r.split(",", 1))
+    mp = re.fullmatch(r"(.+?)\s*\((.+)\)", r)
+    if mp and not pb:
+        r, pb = mp.group(1).strip(), mp.group(2).strip()
+    if not r:
+        r, pb = pb, ""
+    r = re.sub(r"\s+(MW|MS)\.?$", "", r)
     nr, npb = T.norm(r), T.norm(pb)
-    tutto = nr + " " + npb
-    compatto = tutto.replace(" ", "")
-    if "wine advocate" in tutto or "robertparker" in compatto or nr in P_ADVOCATE:
-        return "Robert Parker"
-    if nr in ("neal martin", "jeb dunnuck") and not npb:
-        if nr == "jeb dunnuck":
-            return "Jeb Dunnuck"
-        if data and data[:4].isdigit():
-            return "Robert Parker" if int(data[:4]) < 2019 else "Vinous (Neal Martin)"
+    comp = (nr + npb).replace(" ", "")
+    anno_d = int(data[:4]) if data and data[:4].isdigit() else None
+    if any(k in comp for k in CASA):
         return None
-    if "vinous" in tutto or nr in P_VINOUS:
-        persona = r if r and "vinous" not in nr else ""
-        persona = {"Rebecca Gibb": "Rebecca Gibb MW"}.get(persona, persona)
-        return f"Vinous ({persona})" if persona else "Vinous"
-    if "jamessuckling" in compatto or nr == "james suckling":
-        return "James Suckling"
-    if "jancis" in tutto:
-        return "Jancis Robinson"
-    if "wine cellar insider" in tutto or nr.startswith("jeff leve"):
-        return "Jeff Leve (The Wine Cellar Insider)"
-    if "burghound" in compatto or nr in ("allen meadows", "burghound"):
-        return "Burghound"
-    if "decanter" in tutto:
-        return "Decanter"
-    if "wine spectator" in tutto or nr in P_SPECTATOR:
-        return "Wine Spectator"
-    if "wine enthusiast" in tutto:
-        return "Wine Enthusiast"
-    if "revue du vin" in tutto or nr in ("rvf", "la rvf"):
-        return "Revue du Vin de France"
-    if "bettane" in tutto:
-        return "Bettane+Desseauve"
-    if "jeb dunnuck" in tutto:
-        return "Jeb Dunnuck"
-    if "tim atkin" in tutto:
-        return "Tim Atkin"
-    if "jane anson" in tutto:
-        return "Jane Anson"
-    if "quarin" in tutto:
-        return "Jean-Marc Quarin"
-    if "gambero" in tutto:
-        return "Gambero Rosso"
-    if "falstaff" in tutto:
-        return "Falstaff"
-    if "andreas larsson" in tutto:
-        return "Andreas Larsson"
-    if "john gilman" in tutto:
+    if nr == "thomas parker" and not npb:
+        return None                     # a Farr firma anche cosi' senza testata: non si sa se e' la casa
+    if nr.startswith("john gilman"):
         return "John Gilman"
-    key = nr or npb
-    if key in NOMI_CRITICI:
-        return NOMI_CRITICI[key]
-    return r or pb or None
+    if "wineadvocate" in comp or "robertparker" in comp or nr == "robert parker":
+        return "Robert Parker"
+    if nr == "lisa perrotti brown" and not npb:
+        if anno_d is None:
+            return None
+        return "Robert Parker" if anno_d < 2021 else "The Wine Independent"
+    if "wine independent" in npb or nr == "the wine independent":
+        return "The Wine Independent"
+    if nr in P_ADVOCATE and not npb:
+        return "Robert Parker"
+    if nr == "neal martin" and not npb:
+        if anno_d is None:
+            return None
+        return "Robert Parker" if anno_d < 2019 else "Vinous (Neal Martin)"
+    if "vinous" in npb or nr == "vinous" or (nr in VINOUS_PERSONE and not npb):
+        persona = VINOUS_PERSONE.get(nr, "" if nr == "vinous" else r)
+        return f"Vinous ({persona})" if persona else "Vinous"
+    if nr.startswith("jancis robinson") or nr == "jancis":
+        return "Jancis Robinson"
+    if nr in JR_TEAM or ("jancisrobinson" in comp and "jancis" not in nr):
+        return f"JancisRobinson.com ({r})"
+    if "jancisrobinson" in comp:
+        return "Jancis Robinson"
+    if "jamessuckling" in comp or nr == "james suckling":
+        return "James Suckling"
+    if "wine cellar insider" in npb or nr.startswith("jeff leve"):
+        return "Jeff Leve (The Wine Cellar Insider)"
+    if "burghound" in comp or nr in ("allen meadows", "burghound"):
+        return "Burghound"
+    if "decanter" in comp:
+        return "Decanter"
+    if "winespectator" in comp or (nr in P_SPECTATOR and not npb) or nr in P_SPECTATOR and "winespectator" in npb.replace(" ", ""):
+        return "Wine Spectator"
+    if "wineenthusiast" in comp:
+        return "Wine Enthusiast"
+    if nr == "ian d agata":
+        return "Ian D'Agata"
+    if "revue" in comp and "vin" in comp or nr in ("rvf", "la rvf"):
+        return "Revue du Vin de France"
+    if "bettane" in comp:
+        return "Bettane+Desseauve"
+    if "jebdunnuck" in comp or nr in ("jeb dunnuck", "audrey frick"):
+        return "Jeb Dunnuck"
+    if nr.startswith("tim atkin"):
+        return "Tim Atkin"
+    if nr == "jane anson":
+        return "Jane Anson"
+    if "quarin" in nr:
+        return "Jean-Marc Quarin"
+    if nr.startswith("jasper morris") or "insideburgundy" in comp:
+        return "Jasper Morris (Inside Burgundy)"
+    if "gault" in comp:
+        return "Gault&Millau"
+    if "gambero" in comp:
+        return "Gambero Rosso"
+    if "falstaff" in comp:
+        return "Falstaff"
+    if "andreas larsson" in nr:
+        return "Andreas Larsson"
+    if nr.startswith("jeannie cho lee"):
+        return "Jeannie Cho Lee"
+    if nr in NOMI_CRITICI:
+        return NOMI_CRITICI[nr]
+    return (f"{r} ({pb})" if pb else r) or None
 
 
 def _pi_recente(candidati):
@@ -1085,6 +1145,8 @@ def estrai_frw(t):
         sf, sc = r.get("scoreFrom"), r.get("scoreScale")
         if not crit or sf is None or sc not in (20, 100):
             continue
+        if crit == "Jancis Robinson" and int(sc) != 20:
+            continue                    # Jancis Robinson dà i voti su 20
         v = voce(crit, float(sf), str(int(sc)))
         if v:
             cand.append(((r.get("date") or "")[:10], v[0], v[1], v[2]))
@@ -1119,31 +1181,33 @@ def estrai_jb(t):
     marca = marca.get("name", "") if isinstance(marca, dict) else (marca or "")
     s.identita = f"{p.get('name', '')} {marca}"
     modello = str(p.get("model") or "")
-    s.anno = modello if re.fullmatch(r"(19|20)\d\d", modello) else ("NV" if modello.upper() in ("NV", "N.V.", "") else None)
+    s.anno = modello if re.fullmatch(r"(19|20)\d\d", modello) else ("NV" if modello.upper() in ("NV", "N.V.") else None)
     formati = set()
     for o in p.get("offers") or []:
         for mm in re.finditer(r"(\d+)\s*x\s*(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b", str(o.get("description", "")), re.I):
             v = float(mm.group(2).replace(",", "."))
             formati.add(int(round(v * (10 if mm.group(3).lower() == "cl" else 1 if mm.group(3).lower() == "ml" else 1000))))
-    s.ml = formati.pop() if len(formati) == 1 else None
+    s.ml_set = set(formati)
+    s.ml = next(iter(formati)) if len(formati) == 1 else None
     u = t.replace('\\"', '"')
     crit = _array_json(u, '"critics":') or []
     cand = []
     for c in crit:
-        if not isinstance(c, dict) or str(c.get("vintageName")) != modello:
+        if not isinstance(c, dict) or (modello and str(c.get("vintageName")) != modello):
             continue
         mm = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\+?\s*/\s*(100|20)\s*", str(c.get("scoreText", "")))
         if not mm:
             continue              # intervalli (92-94), assaggi da botte, voti su altre scale: non si usano
-        nome_c = critico_da(c.get("reviewer", ""), c.get("publication", ""), "")
+        d = str(c.get("dateReviewed") or "")
+        dm = re.match(r"(\d\d)/(\d{4})", d)
+        ym = f"{dm.group(2)}-{dm.group(1)}" if dm else ""
+        nome_c = critico_da(c.get("reviewer", ""), c.get("publication", ""), ym)
         if not nome_c:
             continue
         valore, _ = numero(mm.group(1))
         v = voce(nome_c, valore, mm.group(2))
         if v:
-            d = str(c.get("dateReviewed") or "")
-            dm = re.match(r"(\d\d)/(\d{4})", d)
-            cand.append((f"{dm.group(2)}-{dm.group(1)}" if dm else "", v[0], v[1], v[2]))
+            cand.append((ym, v[0], v[1], v[2]))
     s.voti = _pi_recente(cand)
     return s
 
@@ -1198,7 +1262,7 @@ def estrai_farr(t):
         if not re.fullmatch(r"\d+(?:[.,]\d+)?\+?", punteggio):
             continue                           # intervalli (94-96) e simili: non si usano
         parti = [x.strip() for x in firma.split(",")]
-        data = parti[-1] if len(parti) >= 3 and re.search(r"\d{4}$", parti[-1]) else ""
+        data = parti[-1] if len(parti) >= 2 and re.fullmatch(r"(?:[A-Za-z]+\s+)?\d{4}", parti[-1]) else ""
         anno_d = re.search(r"\d{4}$", data)
         mese = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
                                             "september", "october", "november", "december"], 1)}
@@ -1369,7 +1433,13 @@ def verifica_pagina(v, alts, riga, sch):
     a_peck = v["annata"] or "NV"
     anno = sch.anno or riga["annata_slug"]
     ml = sch.ml or int(round(float(riga["litri_slug"]) * 1000))
-    if ml != (T.formato_peck(v) or 750):
+    ml_set = getattr(sch, "ml_set", None)
+    ml_peck = T.formato_peck(v) or 750
+    if ml_set:
+        if ml_peck not in ml_set:       # la scheda vende piu' formati: va bene se c'e' quello di Peck
+            return None
+        ml = ml_peck
+    elif ml != ml_peck:
         return None
     d = VA.distanza(a_peck, anno)
     if d > MAX_DISTANZA_ANNATA:
@@ -1380,12 +1450,19 @@ def verifica_pagina(v, alts, riga, sch):
     return ("esatta" if d == 0 else "annata diversa"), anno, ml / 1000
 
 
-def estrai():
+def estrai(solo=None):
+    """Legge le schede su disco e riscrive data/voti_enoteche.csv. Con `solo` (nomi di enoteca) si ricalcolano e si
+    sostituiscono SOLO le righe di quelle fonti: le righe delle altre restano come sono (anche di vini che nel
+    frattempo non sono piu' in carta)."""
     vini, _ = VA.leggi_vini()
     V = {v["id"]: v for v in vini}
     uscita = []
     stat = Counter()
-    for nome in ENOTECHE:
+    if solo:
+        fonti = {NOMI_FONTE[n] for n in solo}
+        with open(USCITA, encoding="utf-8-sig", newline="") as fh:
+            uscita = [r for r in csv.DictReader(fh) if r["fonte"] not in fonti]
+    for nome in (solo or ENOTECHE):
         if not (RAW / nome / "candidati.csv").exists():
             continue
         cart = RAW / nome / "pagine"
@@ -1402,6 +1479,9 @@ def estrai():
                     print("errore estrazione", nome, riga["url"], repr(e), file=sys.stderr)
                     cache[riga["url"]] = Scheda()
             sch = cache[riga["url"]]
+            if riga["id"] not in V:
+                stat[nome, "vino non piu' in carta"] += 1
+                continue
             v = V[riga["id"]]
             ok = verifica_pagina(v, T.tok_cantina(v["cantina"]), riga, sch)
             if not ok:
@@ -1425,7 +1505,9 @@ def estrai():
             for crit, voto, scala in voti:
                 uscita.append({"id": riga["id"], "fonte": NOMI_FONTE[nome], "url": riga["url"], "critico": crit,
                                "voto": voto, "scala": scala, "annata_fonte": anno, "litri_fonte": litri,
-                               "corrispondenza": corr, "data_raccolta": DATA_RACCOLTA})
+                               "corrispondenza": corr,
+                               "data_raccolta": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")
+                               if nome in NUOVE or nome == "bbr" else DATA_RACCOLTA})
     uscita.sort(key=lambda r: (int(r["id"]), r["fonte"], r["critico"]))
     with open(USCITA, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.DictWriter(fh, CAMPI)
@@ -1436,6 +1518,33 @@ def estrai():
     print(len(uscita), "righe in", USCITA.name)
 
 
+def verifica(n=30, nomi=None, seme=7):
+    """N schede a caso fra quelle dei negozi `nomi` (default: i nuovi del secondo giro) da controllare a mano:
+    il vino Peck, quello che dice la scheda (nome, annata, formato) e i voti scritti nel csv."""
+    import random
+    nomi = nomi or list(NUOVE) + ["bbr"]
+    per_fonte = {NOMI_FONTE[x]: x for x in nomi}
+    vini, _ = VA.leggi_vini()
+    Vd = {v["id"]: v for v in vini}
+    with open(USCITA, encoding="utf-8-sig", newline="") as fh:
+        righe = [r for r in csv.DictReader(fh) if r["fonte"] in per_fonte]
+    gruppi = defaultdict(list)
+    for r in righe:
+        gruppi[(r["id"], r["fonte"], r["url"])].append(r)
+    chiavi = sorted(gruppi)
+    random.Random(seme).shuffle(chiavi)
+    for k in chiavi[:n]:
+        id_, fonte, url = k
+        nome = per_fonte[fonte]
+        sch = ESTRATTORI[nome](leggi_testo(RAW / nome / "pagine" / nome_file(url)))
+        v = Vd.get(id_, {})
+        print(f"[{fonte}] PECK: {v.get('cantina')} | {v.get('nome')} | {v.get('annata') or 'NV'} | {v.get('litri')} L | "
+              f"{v.get('regione')} | {v.get('prezzo_euro')} euro")
+        print(f"      SCHEDA: {sch.identita} | {sch.anno} | {sch.ml} | {url}")
+        print("      VOTI: " + "; ".join(f"{r['critico']} {r['voto']}/{r['scala']}" for r in gruppi[k])
+              + f"   [{gruppi[k][0]['corrispondenza']}, annata scheda {gruppi[k][0]['annata_fonte']}]")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "sitemap":
@@ -1444,12 +1553,14 @@ if __name__ == "__main__":
         bbr_sitemap()
     elif cmd == "abbina":
         abbina(sys.argv[2:] or None)
+    elif cmd == "verifica":
+        verifica(int(sys.argv[2]) if len(sys.argv) > 2 else 30, sys.argv[3:] or None)
     elif cmd == "sitemap_nuove":
         sitemap_nuove()
     elif cmd == "idw_sitemap":
         sitemap_idealwine()
     elif cmd == "estrai":
-        estrai()
+        estrai(sys.argv[2:] or None)
     elif cmd == "scarica" and len(sys.argv) > 2:
         scarica_schede(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else None)
     else:
