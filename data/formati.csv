@@ -1,7 +1,7 @@
 ﻿litri,formato_nome,righe_vino,prezzo_min,prezzo_max
 0.375,"Mezza bottiglia (37,5 cl)",40,16,560
 0.5,Bottiglia da 50 cl,16,18,310
-0.75,Bottiglia,2403,11,47000
+0.75,Bottiglia,2400,11,47000
 1,Bottiglia da 1 litro,5,50,230
 1.5,Magnum,378,35,15000
 2.25,Set / cassa,5,680,7000
