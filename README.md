@@ -114,8 +114,11 @@ Peck S.p.A. ..."). In `indirizzi.csv` quella riga e' messa in fondo.
 
 ## Passo 2: chi c'e' dietro gli indirizzi
 
-`data/aziende.csv` ha 100 righe: 67 indirizzi di produzione, 22 bolli CE e 11 produttori nominati
-(vini compresi). Per ognuna: `tipo_chiave` (`indirizzo`, `bollo_ce` o `produttore`), `chiave` (l'indirizzo,
+`data/aziende.csv` ha 108 righe (indirizzi di produzione, bolli CE e produttori nominati, vini compresi;
+dal secondo giro del 25 ottobre ci sono anche InKonserva, Alico, Lombardo, Raimo, Galantino, Vergani, Frantoio Muraglia,
+Pesasur, F.lli Merano...). Le aziende che nessun prodotto dello shop del 2026 usa ma che hanno un nome e una
+ricerca fatta (Vergani, Muraglia, Pesasur, Galantino, Rustichelli, Merano) hanno la loro pagina, segnata «Fuori dallo
+shop online del 2026». Per ognuna: `tipo_chiave` (`indirizzo`, `bollo_ce` o `produttore`), `chiave` (l'indirizzo,
 il codice o il nome cosi' come sta nei dati del passo 1), `ragione_sociale`, `marchio`, `sito`,
 `shop_online` (`si`, `no` o `non verificato`), `link_shop`, `fonte`, `certezza`, `prodotti_peck` (i
 prodotti Peck collegati) e `nota`.
@@ -123,9 +126,9 @@ prodotti Peck collegati) e `nota`.
 Non e' stato compilato da un programma: e' una ricerca sul web fatta a mano, **con una fonte per
 riga** (colonna `fonte`). Come leggere la colonna `certezza`:
 
-- `certa` (77 righe): una fonte mostra proprio quell'indirizzo o quel codice con quell'azienda.
+- `certa` (88 righe): una fonte mostra proprio quell'indirizzo o quel codice con quell'azienda.
 - `probabile` (7 righe): l'indizio e' forte ma indiretto.
-- `non trovata` (16 righe): non siamo riusciti a risalire all'azienda.
+- `non trovata` (13 righe): non siamo riusciti a risalire all'azienda.
 
 `shop_online = no` vuol dire solo che sul sito ufficiale non abbiamo trovato un negozio online:
 non e' una prova che non esista.
@@ -298,11 +301,12 @@ quindi va bene sia sotto `/peck-tracker/` su GitHub Pages sia alla radice di un 
 | `index.html`, `dispensa/` | la Dispensa (194 prodotti, filtri, Schede / Elenco) | 2 |
 | `prodotto/<id>/` | un prodotto: chi lo fa, dove, la frase di Peck, le box in cui sta | 194 |
 | `box/`, `box/<id>/` | le 46 pagine dello shop, "spacchettate" | 1 + 46 |
-| `produttori/`, `produttore/<id>/` | le aziende, con fonti e prodotti | 1 + 90 |
+| `produttori/`, `produttore/<id>/` | le aziende, con fonti, prodotti e osservazioni datate (96, di cui 6 «fuori dallo shop del 2026») | 1 + 96 |
 | `enoteca/` | i 3.071 vini, con filtri e Schede / Elenco | 1 |
 | `cantina/<id>/` | una cantina e le sue etichette | 820 |
 | `vino/<id>-<nome>/` | un vino: foto, profilo di degustazione (punti e grafico a ragnatela), formati e prezzi, vini correlati, bottoni Vivino / Wine-Searcher / scheda completa in enoteca | 3.071 |
-| `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), e sotto, chiuso, i 20 casi in cui costa di piu' | 1 |
+| `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), cibo e vini (Tannico, Callmewine, Millesima, Xtrawine), e sotto, chiuso, i 20 casi in cui costa di piu' | 1 |
+| `prezzi/` | «Prezzi confrontati» (voce di menu): TUTTI i confronti, cibo e vini, per categoria, con barra della differenza e filtri; legge `docs/prezzi.json` | 1 |
 | `come-funziona/`, `404.html` | spiegazioni, limiti, link controllati | 2 |
 
 Le pagine di prodotti, box, produttori, cantine e vini sono HTML completo, si leggono anche senza
@@ -340,8 +344,8 @@ prima per `chiave_dispensa`, poi per `nome_peck` (senza accenti e punteggiatura)
   «Attenzione». La nota intera sta in «Note del confronto».
 - **Dispensa**: il chip «+72% vs produttore» compare per «stesso prodotto» o «molto simile» con due prezzi veri (13 prodotti);
   il filtro «Con confronto prezzi» (`cp=1`, attributo `data-cp`) mostra solo quelli.
-- **Pagina vino, riquadro «Prezzi altrove»**: solo se `confrontabile = si` (209 vini): prezzo di Tannico a bottiglia e al
-  litro, disponibilita' e link. Se la bottiglia non e' disponibile su Tannico lo dice.
+- **Pagina vino, riquadro «Prezzi altrove»**: solo se `confrontabile = si`: prezzo di Tannico, Callmewine, Millesima e Xtrawine a
+  bottiglia e al litro, annata, disponibilita' e link (vedi «Vini: Tannico e le enoteche» qui sotto). Se la bottiglia non e' disponibile lo dice.
 - **Angolo delle occasioni** (`/occasioni/`, voce di menu «Occasioni»): cibo («stesso prodotto» o «molto simile» con due
   prezzi) e vini (`confrontabile = si` **e** disponibili su Tannico) in cui la differenza e' al massimo `SOGLIA_OCCASIONE`
   (costante in `src/sito.py`, oggi +5%), dal piu' conveniente. Il riquadro chiuso «Dove Peck costa di piu'» mostra i
@@ -349,6 +353,56 @@ prima per `chiave_dispensa`, poi per `nome_peck` (senza accenti e punteggiatura)
   descritto in «Aggiornamento automatico»; i prezzi di Peck del delivery si aggiornano solo a mano.
 - «Come funziona» ha la sezione «Confronto prezzi» (abbinamento, livelli, al kg, prodotti solo nelle box, robots.txt e
   agenti AI, aggiornamento).
+
+**Vini: Tannico e le enoteche (terzo giro, 25 ottobre).** `data/confronto/vini_enoteche_prezzi.csv` (da
+`src/confronto_vini_enoteche.py`) porta le offerte di **Callmewine, Millesima e Xtrawine** (solo `confrontabile = si`;
+Zachys no, e' americano e senza imposte). `sito.py` unisce Tannico e le enoteche in un «gruppo» per ogni bottiglia di Peck
+e formato (id vino + litri): pagina del vino, riquadro «Prezzi altrove» con tutte le offerte (annata scritta se non e' quella
+di Peck, «non disponibile» se il negozio non la ha piu', nota sul prezzo francese di Millesima). Il confronto vero e proprio e' con
+l'offerta **piu' bassa fra i negozi che la vendono**, preferendo la stessa annata di Peck (se nessuno la ha in vendita si usa
+l'ultima vista, e la riga dice «non disponibile»): `riferimento()` in `src/sito.py`. Per l'Angolo delle occasioni contano solo
+i negozi con la bottiglia in vendita e la differenza (al litro) deve essere al massimo `SOGLIA_OCCASIONE`.
+
+**Prezzi confrontati (`/prezzi/`).** Tutti i confronti (733: 56 di cibo, di cui 12 «da un altro produttore»; 677 di vino) in una
+lista a righe: foto, nome, prezzo di Peck, prezzi altrove e dove, differenza al kg o al litro con una barra (verde se
+Peck costa meno oltre il 5%, neutra entro ±5%, calda sopra), livello di somiglianza, link alla nostra pagina. Raggruppati per
+categoria (le categorie della Dispensa; i vini per tipo e paese) con filtri per categoria, regione del vino, fonte (produttore /
+altro produttore / Tannico / enoteche), «solo lo stesso prodotto» (per il vino: stessa annata), «solo occasioni» e ordine
+(per categoria, tutto insieme dal piu' conveniente o dal piu' caro, per nome). In cima: il numero di confronti e la differenza
+mediana (cibo, vini); sopra la lista una riga viva con la mediana dei risultati filtrati. Si disegna con JavaScript da
+`docs/prezzi.json` (circa 400 KB, 40 righe alla volta) e tiene i filtri nell'indirizzo (`?cat=...&fonte=tannico&q=...`).
+Le righe di `risultati_N.csv` senza pagina nella Dispensa (prodotti solo del delivery: `risultati_7.csv`, con le colonne
+`cod_art_delivery` e `nome_delivery`) compaiono solo qui, con la foto del delivery se il catalogo salvato in `data/locale/` la ha
+(l'indirizzo della foto e' pubblico, il catalogo no). `data/confronto/alternative_7.csv` (12 righe, `stesso_produttore = no`):
+la stessa ricetta venduta da un **altro** produttore; nella pagina del prodotto sta in un riquadro a parte, «Un'alternativa da un
+altro produttore» (mai dentro «Dal produttore», mai «stesso prodotto»), in `/prezzi/` ha la fonte «altro produttore» e **non**
+entra mai nell'Angolo delle occasioni.
+
+**Ritagli dalle foto delle box.** `data/ritagli.csv` (`chiave` = id del prodotto nella Dispensa, `url_foto_box`, rettangolo
+`x, y, w, h` in frazioni della foto, `certezza` alta/media, `nota`): per i 117 prodotti senza foto propria e senza foto del
+delivery il sito mostra la foto della box (collegata, mai copiata) ingrandita con il CSS in un riquadro quadrato:
+`background-size: (100/w)% (100/h)%`, `background-position: (x/(1-w)·100)% (y/(1-h)·100)%`, `no-repeat`. Sotto resta il nostro
+disegno, che si vede se la foto non si carica. Le foto delle box pesano circa 1 MB l'una: `app.js` (`window.ptRitagli`) le carica solo
+quando il riquadro e' vicino allo schermo (nella pagina del prodotto sono scritte subito); le pagine hanno `<meta name="referrer"
+content="no-referrer">`. Didascalia: «Dettaglio dalla foto della box «X»» con il link alla pagina della box; se la certezza e'
+media anche «riconosciuto per esclusione» (e nelle schede il riquadro ha il bordo tratteggiato). Nelle schede e negli elenchi la
+didascalia e' corta («Dettaglio dalla box»), perche' tutta la scheda e' gia' un link.
+
+**Storico (`data/storico.csv`, `data/storico_fonti/*.json`, `src/storico.py`).** Fotografie dello shop in date passate
+(oggi una: 29 novembre 2025, pagina «Il cuore del regno») confrontate con lo shop del 24 ottobre 2026 (`uguale`, `diverso`,
+`non in vendita online nel 2026`). Per aggiungere una data: un altro file in `data/storico_fonti/`, poi `python -I src/storico.py` e
+`python -I src/sito.py`. Sul sito: nella pagina del prodotto «Storia del fornitore» (la linea del tempo, per esempio «29 novembre
+2025: Via Oristano 5, Milano — Vergani S.r.l.» e «24 ottobre 2026: Panificio Follador, Pordenone», con l'avviso «Il fornitore e'
+cambiato» quando il confronto e' `diverso`); nella pagina dell'azienda «Osservazioni datate», anche per i prodotti che oggi non sono piu' nello
+shop (3: frutta disidratata 500 g, filetti di sgombro Pesasur, orcio Muraglia); «Come funziona» ha la sezione «Fotografie datate».
+
+**Valore spacchettato (`data/confronto/box_valore.csv`, `box_valore_righe.csv`, da `src/box_valore.py`).** In ogni pagina di box il
+riquadro «Valore spacchettato»: prezzo della pagina, somma dei prezzi dei prodotti che ne hanno uno (delivery, schede singole dello shop,
+carta dell'enoteca, produttori), prodotti con un prezzo su totale, **copertura** e, solo se la copertura e' almeno il 50%,
+la differenza in percentuale (`differenza_pct`; sotto il 50% resta vuota e la pagina dice che la somma non e' confrontabile).
+Mai chiamata risparmio o ricarico: non contiene confezione, nastri e servizio ne' i prodotti senza prezzo. Sotto, la tabella dei prodotti con il prezzo e da dove viene.
+
+`sito.py` legge tutti i `risultati_*.csv` che trova: per aggiungere un gruppo basta il file nuovo e `python -I src/sito.py`.
 
 **I voti (Tannico).** `python -I src/tannico.py voti` scarica la scheda prodotto (`/products/<handle>`, che il
 robots.txt di Tannico consente; 3 secondi di pausa, browser finto, se arriva 429 aspetta 60 secondi e rallenta,

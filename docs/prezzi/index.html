@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prezzi confrontati – Peck Tracker</title>
+<meta name="description" content="Tutti i confronti di prezzo: cibo di Peck contro il sito del produttore, vino contro Tannico e le enoteche online, con filtri e differenza al chilo o al litro. Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita.">
+<meta name="theme-color" content="#FFCD45">
+<meta name="referrer" content="no-referrer">
+<link rel="canonical" href="https://andreottiviii.github.io/peck-tracker/prezzi/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23ffcd45'/%3E%3Ccircle cx='15' cy='15' r='7' fill='none' stroke='%235e4824' stroke-width='3'/%3E%3Cpath d='M20 20l6 6' stroke='%235e4824' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@1,400;1,500&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body data-radice="../">
+<a class="salta" href="#principale">Vai al contenuto</a>
+
+<p class="avviso" role="note">Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita.</p>
+
+<header class="testata" id="testata">
+  <div class="contenitore">
+    <div class="marchio" id="marchio">
+      <div class="marchio-testo">
+        <p class="logo"><a href="../">Peck Tracker</a></p>
+        <p class="sotto-logo">Chi fa davvero quello che vende Peck, e dove</p>
+      </div>
+    </div>
+    <div class="barra">
+      <a class="mini-logo" href="../" aria-hidden="true" tabindex="-1">Peck Tracker</a>
+      <nav aria-label="Sezioni del sito" class="menu"><a href="../dispensa/">Dispensa</a><a href="../box/">Box regalo</a><a href="../produttori/">Produttori</a><a href="../enoteca/">Enoteca</a><a href="../occasioni/">Occasioni</a><a href="../prezzi/" aria-current="page">Prezzi confrontati</a><a href="../come-funziona/">Come funziona</a></nav>
+    </div>
+  </div>
+</header>
+
+<main id="principale" tabindex="-1" class="contenitore">
+<section>
+<h1 class="titolo-pagina">Prezzi confrontati</h1>
+<p class="intro">Tutti i confronti di prezzo che abbiamo, in un posto solo: il cibo di Peck contro il sito di chi lo fa, il vino contro Tannico e le enoteche online (Callmewine, Millesima, Xtrawine). Ogni riga dice quanto costa a parità di peso o di litri e dove; la barra mostra la differenza: <span class="leg leg-meno">verde</span> se da Peck costa meno, <span class="leg leg-pari">neutra</span> entro il ±5%, <span class="leg leg-piu">calda</span> se costa di più. Gli abbinamenti sono nostri e possono sbagliare; prezzi e formati cambiano. Come si confronta: «<a href="../come-funziona/#confronto-prezzi">Come funziona</a>». Solo le migliori occasioni stanno nell’<a href="../occasioni/">Angolo delle occasioni</a>.</p>
+<div class="riepilogo" id="riepilogo">
+<div><b>733</b>confronti in tutto</div>
+<div><b>56</b>di cibo (12 con un altro produttore)</div>
+<div><b>677</b>di vino</div>
+<div><b>+52%</b>differenza mediana, cibo (dal produttore)</div>
+<div><b>+26%</b>differenza mediana, vino</div>
+</div>
+<p class="meta nota-ord">Differenza mediana: la metà dei confronti sta sotto e metà sopra. Per il cibo, sui soli «stesso prodotto» e «molto simile» è +53% (39 confronti); per il vino, sulle bottiglie ancora in vendita è +27% (557). Peck costa meno, o al massimo il 5% in più, in 6 confronti di cibo e in 84 di vino. Confronto del 25 ottobre 2026; i prezzi di Peck (delivery e carta dell’enoteca) si aggiornano solo a mano.</p>
+<form class="filtri" role="search" aria-label="Filtri: prezzi confrontati" onsubmit="return false">
+<div class="campo cerca"><label for="f-q">Cerca un prodotto, un vino o un’azienda</label><input type="search" id="f-q" name="q" data-modo="cerca" placeholder="per esempio: tartufo, Barolo, Tannico" autocomplete="off"></div>
+<button type="button" class="apri-filtri" aria-expanded="false" aria-controls="altri-filtri">Filtri</button>
+<div class="altri-filtri" id="altri-filtri">
+<div class="riga"><div class="campo"><label for="f-cat">Categoria</label><select id="f-cat" name="cat"><option value="">Tutte</option><optgroup label="Cibo"><option value="olio e aceto">Olio e aceto</option><option value="frutta secca">Frutta secca</option><option value="pesce">Pesce</option><option value="salumi">Salumi</option><option value="conserve e sottoli">Conserve e sottoli</option><option value="altro">Altro</option></optgroup><optgroup label="Vino"><option value="v-rosso-italia">Vino rosso · Italia</option><option value="v-rosso-francia">Vino rosso · Francia</option><option value="v-rosso-altri">Vino rosso · altri paesi</option><option value="v-bianco-italia">Vino bianco · Italia</option><option value="v-bianco-francia">Vino bianco · Francia</option><option value="v-bianco-altri">Vino bianco · altri paesi</option><option value="v-spumante-francia">Spumanti e Champagne · Francia</option><option value="v-spumante-italia">Spumanti · Italia</option><option value="v-altri">Rosati, dolci e liquorosi</option></optgroup></select></div><div class="campo"><label for="f-reg">Regione del vino</label><select id="f-reg" name="reg"><option value="">Tutte</option><option value="Abruzzo">Abruzzo (Italia)</option><option value="Barbaresco">Barbaresco (Italia)</option><option value="Barolo">Barolo (Italia)</option><option value="Beaujolais">Beaujolais (Francia)</option><option value="Bierzo">Bierzo (Spagna)</option><option value="Bolgheri">Bolgheri (Italia)</option><option value="Bordeaux">Bordeaux (Francia)</option><option value="Bordeaux Supérieur">Bordeaux Supérieur (Francia)</option><option value="Bourgogne">Bourgogne (Francia)</option><option value="Bourgogne">Bourgogne (Italia)</option><option value="Brunello di Montalcino">Brunello di Montalcino (Italia)</option><option value="California">California (Stati Uniti)</option><option value="Campania">Campania (Italia)</option><option value="Castiglia e Leon">Castiglia e Leon (Spagna)</option><option value="Cerasuolo d&#x27;Abruzzo">Cerasuolo d&#x27;Abruzzo (Italia)</option><option value="Champagne">Champagne (Francia)</option><option value="Chianti Classico">Chianti Classico (Italia)</option><option value="Collio">Collio (Italia)</option><option value="Costa d&#x27;Amalfi">Costa d&#x27;Amalfi (Italia)</option><option value="Côtes de Provence">Côtes de Provence (Francia)</option><option value="Côtes du Rhône">Côtes du Rhône (Francia)</option><option value="Emilia Romagna">Emilia Romagna (Italia)</option><option value="Etna">Etna (Italia)</option><option value="Fiano de Avellino">Fiano de Avellino (Italia)</option><option value="Franciacorta">Franciacorta (Italia)</option><option value="Friuli Isonzo">Friuli Isonzo (Italia)</option><option value="Friuli Venezia Giulia">Friuli Venezia Giulia (Italia)</option><option value="Galizia">Galizia (Spagna)</option><option value="Gippsland">Gippsland (Australia)</option><option value="Greco di Tufo">Greco di Tufo (Italia)</option><option value="Jura">Jura (Francia)</option><option value="Langhe">Langhe (Italia)</option><option value="Liguria">Liguria (Italia)</option><option value="Loire">Loire (Francia)</option><option value="Lombardia">Lombardia (Italia)</option><option value="Marche">Marche (Italia)</option><option value="Patagonia">Patagonia (Argentina)</option><option value="Piemonte">Piemonte (Italia)</option><option value="Porto">Porto (Portogallo)</option><option value="Pouilly-Fumé">Pouilly-Fumé (Francia)</option><option value="Provence">Provence (Francia)</option><option value="Puglia">Puglia (Italia)</option><option value="Ribera del Duero">Ribera del Duero (Spagna)</option><option value="Rioja">Rioja (Spagna)</option><option value="Sardegna">Sardegna (Italia)</option><option value="Sauternes">Sauternes (Francia)</option><option value="Sicilia">Sicilia (Italia)</option><option value="Soave Classico">Soave Classico (Italia)</option><option value="South Australia">South Australia (Australia)</option><option value="South Island">South Island (Nuova Zelanda)</option><option value="Südtirol - Alto Adige">Südtirol - Alto Adige (Italia)</option><option value="Taurasi">Taurasi (Italia)</option><option value="Toscana">Toscana (Italia)</option><option value="Trebbiano d&#x27;Abruzzo">Trebbiano d&#x27;Abruzzo (Italia)</option><option value="Trentino-Alto Adige">Trentino-Alto Adige (Italia)</option><option value="Umbria">Umbria (Italia)</option><option value="Valle d&#x27;Aosta">Valle d&#x27;Aosta (Italia)</option><option value="Valle de Maipo">Valle de Maipo (Cile)</option><option value="Veneto">Veneto (Italia)</option><option value="Venezia Giulia">Venezia Giulia (Italia)</option><option value="Victoria">Victoria (Australia)</option><option value="Vin de France">Vin de France (Francia)</option><option value="Yunnan">Yunnan (Cina)</option></select></div><div class="campo"><label for="f-fonte">Dove si confronta</label><select id="f-fonte" name="fonte"><option value="">Dappertutto</option><option value="produttore">Dal produttore</option><option value="altro">Da un altro produttore</option><option value="tannico">Tannico</option><option value="enoteche">Enoteche (Callmewine, Millesima, Xtrawine)</option></select></div><div class="campo spunta"><input type="checkbox" id="f-stesso" name="stesso" value="1"><label for="f-stesso">Solo lo stesso prodotto</label></div><div class="campo spunta"><input type="checkbox" id="f-occ" name="occ" value="1"><label for="f-occ">Solo dove Peck costa meno (o al massimo +5%)</label></div><div class="campo"><label for="f-ord">Ordina</label><select id="f-ord" name="ord"><option value="">Per categoria, poi dal più conveniente</option><option value="dp-su">Tutto insieme: Peck costa meno prima</option><option value="dp-giu">Tutto insieme: Peck costa di più prima</option><option value="nome">Per nome</option></select></div></div>
+<button type="button" class="azzera">Azzera i filtri</button>
+</div>
+</form>
+<div class="barra-lista"><p class="conteggio" id="conteggio" role="status" aria-live="polite">733 confronti</p><p class="meta" id="riepilogo-vivo"></p></div>
+<div class="lista" id="lista" data-prezzi data-json="../prezzi.json" data-singolare="confronto" data-plurale="confronti">
+<ul class="griglia occasioni prezzi"></ul>
+<p class="vuoto" hidden>Nessun risultato. Prova a togliere qualche filtro.</p>
+<p class="caricamento">Carico i confronti…</p>
+<button type="button" class="bottone secondario altri" hidden>Mostra altri</button>
+</div>
+<noscript><p class="meta">Per filtrare i confronti serve JavaScript. Senza, trovi i migliori nell’<a href="../occasioni/">Angolo delle occasioni</a> e, in ogni pagina di prodotto o di vino, il confronto che la riguarda.</p></noscript>
+</section>
+</main>
+
+<footer class="piede">
+  <div class="contenitore">
+    <p class="avviso-fondo">Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita.</p>
+    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (shop.peck.it e delivery.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
+    <p><a href="../come-funziona/">Come funziona</a> · <a href="https://github.com/AndreottiVIII/peck-tracker" target="_blank" rel="noopener noreferrer">Dati e codice su GitHub<span class="sr"> (si apre in una nuova scheda)</span></a> · Fotografia dei dati: 24 ottobre 2026</p>
+  </div>
+</footer>
+<script>(function(){var h=location.hostname;if(h==='localhost'||h==='127.0.0.1'){var s=document.createElement('script');s.src='../personale.js';document.head.appendChild(s)}})();</script>
+<script src="../app.js" defer></script>
+</body>
+</html>

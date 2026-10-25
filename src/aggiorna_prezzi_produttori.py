@@ -18,7 +18,9 @@ Regole (le stesse del resto del progetto):
     le sezioni dedicate agli agenti AI di Anthropic (ClaudeBot, Claude-Web, Claude-User, Claude-SearchBot,
     anthropic-ai): se vietano la pagina, il sito si salta, senza cambiare User-Agent. Crawl-delay rispettato.
     robots.txt non raggiungibile (errore del server) = il sito si salta.
-  - fornofollador.it e casaiuorio.it si saltano sempre (vietano gli agenti AI; il confronto resta «non verificato»).
+  - fornofollador.it, casaiuorio.it e tartuflanghe.com (tutto il sito, anche shop.tartuflanghe.com) si saltano sempre:
+    vietano gli agenti AI o chiedono di identificarsi in un modo che non possiamo fare. I prezzi restano quelli
+    scritti nel file e la `nota` della riga dice «prezzo del produttore non aggiornato automaticamente».
   - 2 secondi di pausa fra una richiesta e l'altra, un solo sito alla volta, niente login, niente aggiramento
     di blocchi: 403/429 persistenti = quel sito si salta fino alla prossima volta.
   - Un sito che non risponde non ferma il programma: la riga resta com'e' (con la sua vecchia data).
@@ -48,7 +50,11 @@ COLONNE_STORICO = ["data", "url", "prezzo_vecchio", "prezzo_nuovo"]
 UA = "Mozilla/5.0 (compatible; peck-tracker research; non-commercial)"
 TOKEN_NOSTRO = "peck-tracker"
 AGENTI_AI = ["claudebot", "claude-web", "claude-user", "claude-searchbot", "anthropic-ai", "anthropic"]
-SEMPRE_SALTATI = ("fornofollador.it", "casaiuorio.it")
+# vietano gli agenti AI (fornofollador.it, casaiuorio.it) o chiedono ai robot di identificarsi in un modo che non
+# possiamo fare (tartuflanghe.com: robots.txt rimanda a /agents.md): niente scarico automatico, i prezzi restano
+# quelli scritti nel file e le righe sono segnate «non aggiornato automaticamente»
+SEMPRE_SALTATI = ("fornofollador.it", "casaiuorio.it", "tartuflanghe.com")
+NOTA_NON_AGGIORNATO = "prezzo del produttore non aggiornato automaticamente"
 LIVELLI = ("stesso prodotto", "molto simile")
 MIN_RAPPORTO, MAX_RAPPORTO = 0.5, 2.0      # variazioni oltre queste non si applicano
 TIMEOUT = 30
@@ -332,7 +338,30 @@ def da_woocommerce(rete, url_pagina, host, schema, rob):
         minore = int(pr.get("currency_minor_unit", 2) or 0)
         titolo = it.get("name") or ""
         rng = pr.get("price_range")
-        if rng:   # prodotto con varianti: il prezzo dipende dalla variante
+        if rng and it.get("id") and it.get("variations"):   # prodotto con varianti: una richiesta per vederle
+            ok2, _ = rob.permesso(perc + "?parent=" + str(it["id"]))
+            r2, _e = (rete.get(f"{schema}://{host}{perc}?type=variation&parent={it['id']}&per_page=100", host)
+                      if ok2 else (None, ""))
+            try:
+                var = r2.json() if r2 is not None and r2.status_code == 200 else []
+            except ValueError:
+                var = []
+            attributi = {x.get("id"): " ".join(str(a.get("value") or "") for a in x.get("attributes") or [])
+                         for x in it.get("variations") or []}
+            for v in var if isinstance(var, list) else []:
+                pv = v.get("prices") or {}
+                if pv.get("price"):
+                    testo_v = " ".join([v.get("name") or "", attributi.get(v.get("id"), "")] +
+                                       [str(x.get("value") or "") for x in v.get("attributes") or []])
+                    try:   # peso della variante, di solito in kg
+                        grammi = float(v.get("weight")) * 1000 if v.get("weight") else None
+                    except ValueError:
+                        grammi = None
+                    out.append(candidato(int(pv["price"]) / 10 ** int(pv.get("currency_minor_unit", 2) or 0),
+                                         testo_v, grammi, v.get("is_in_stock")))
+            if out:
+                continue
+        if rng:   # senza il dettaglio delle varianti: solo il minimo e il massimo
             for chiave in ("min_amount", "max_amount"):
                 if rng.get(chiave):
                     out.append(candidato(int(rng[chiave]) / 10 ** minore, titolo, None, it.get("is_in_stock")))
@@ -422,6 +451,12 @@ def da_pagina(rete, url_pagina, host, schema, rob):
                 if not valuta or valuta.get("content", "EUR") == "EUR":
                     out.append(candidato(prezzo_da(m["content"])))
                     break
+    if not out:   # microdati: <meta itemprop="price" content="12.00">
+        for el in soup.find_all(attrs={"itemprop": "price"})[:3]:
+            p = prezzo_da(el.get("content") or el.get_text())
+            if p is not None:
+                out.append(candidato(p))
+                break
     return (out, "") if out else (None, "nessun prezzo nella pagina")
 
 
@@ -530,9 +565,14 @@ def aggiorna_riga(riga, col, nuovo, oggi):
         peck_kg = numero(d.get("prezzo_peck_al_kg"))
         diff_v = numero(d.get("differenza_pct"))
         if peck_kg and al_kg_n:
-            riga[col.index("differenza_pct")] = str(round((peck_kg / al_kg_n - 1) * 100, 1))
+            nuova_diff = round((peck_kg / al_kg_n - 1) * 100, 1)
         elif diff_v is not None and d.get("differenza_pct") != "":
-            riga[col.index("differenza_pct")] = str(round(((1 + diff_v / 100) * vecchio / nuovo - 1) * 100, 1))
+            nuova_diff = round(((1 + diff_v / 100) * vecchio / nuovo - 1) * 100, 1)
+        else:
+            nuova_diff = None
+        if nuova_diff is not None:   # alcuni file scrivono il segno (+18.4): lo stile resta quello del file
+            segno = d.get("differenza_pct", "").startswith("+") and nuova_diff > 0
+            riga[col.index("differenza_pct")] = ("+" if segno else "") + str(nuova_diff)
     riga[col.index("data")] = oggi
     return cambiato
 
@@ -557,54 +597,68 @@ def main():
     per_url = {}
     for f, i, d in lavoro:
         per_url.setdefault(d["url_produttore"], []).append((f, i, d))
-    urls = list(per_url)
+    urls = [u for u in per_url
+            if not any(urllib.parse.urlsplit(u).netloc == x or urllib.parse.urlsplit(u).netloc.endswith("." + x)
+                       for x in SEMPRE_SALTATI)]
     if a.limite:
         urls = urls[:a.limite]
     print(f"{len(lavoro)} righe con prezzo del produttore, {len(urls)} indirizzi da rileggere", flush=True)
 
+    # siti che non si rileggono mai da soli: la riga resta com'e' e lo dice nella nota
+    segnate = 0
+    for f, i, d in lavoro:
+        host = urllib.parse.urlsplit(d["url_produttore"]).netloc
+        if any(host == x or host.endswith("." + x) for x in SEMPRE_SALTATI):
+            riga, col = tabelle[f][i], tabelle[f][0]
+            nota = riga[col.index("nota")]
+            if NOTA_NON_AGGIORNATO not in nota:
+                riga[col.index("nota")] = (nota + "; " if nota else "") + NOTA_NON_AGGIORNATO
+                segnate += 1
+    if segnate:
+        print(segnate, "righe segnate «non aggiornato automaticamente»", flush=True)
+
     rete = Rete(a.pausa)
-    storico, conta, motivi = [], {"letti": 0, "cambiati": 0, "invariati": 0, "saltati": 0}, []
+    storico, visti_storico = [], set()
+    conta = {"letti": 0, "cambiati": 0, "invariati": 0, "saltati": 0}
     for n, url in enumerate(urls, 1):
         if scadenza and time.time() > scadenza:
             print("tempo finito: gli altri indirizzi alla prossima volta", flush=True)
             break
         righe_url = per_url[url]
-        vecchio = numero(righe_url[0][2]["prezzo_produttore"])
         try:
             cands, metodo, errore = leggi_prezzi(rete, url)
         except Exception as e:   # un sito che si comporta male non deve fermare gli altri
             cands, metodo, errore = None, "", f"errore inatteso: {type(e).__name__}: {e}"
         if not cands:
-            conta["saltati"] += 1
-            motivi.append((url, errore))
+            conta["saltati"] += len(righe_url)
             print(f"  [{n}/{len(urls)}] NON LETTO {url}: {errore}", flush=True)
             continue
-        prezzo, disponibile, perche = scegli(cands, vecchio, righe_url[0][2].get("formato_produttore", ""))
-        if prezzo is None:
-            conta["saltati"] += 1
-            motivi.append((url, perche))
-            print(f"  [{n}/{len(urls)}] AMBIGUO {url}: {perche}", flush=True)
-            continue
-        if vecchio and not (MIN_RAPPORTO <= prezzo / vecchio <= MAX_RAPPORTO):
-            conta["saltati"] += 1
-            motivi.append((url, f"variazione sospetta {vecchio:g} -> {prezzo:g}"))
-            print(f"  [{n}/{len(urls)}] SOSPETTO {url}: {vecchio:g} -> {prezzo:g}, non applicato", flush=True)
-            continue
-        conta["letti"] += 1
-        cambiato = False
+        # lo stesso indirizzo puo' stare in piu' righe (anche di file diversi) con prezzi vecchi e formati diversi:
+        # ogni riga si decide per conto suo
         for f, i, d in righe_url:
-            riga = tabelle[f][i]
-            if aggiorna_riga(riga, tabelle[f][0], prezzo, oggi):
-                cambiato = True
-        if cambiato:
-            conta["cambiati"] += 1
-            storico.append([oggi, url, testo_prezzo(vecchio), testo_prezzo(prezzo)])
-            print(f"  [{n}/{len(urls)}] CAMBIATO {url}: {vecchio:g} -> {prezzo:g} ({metodo})", flush=True)
-        else:
-            conta["invariati"] += 1
+            vecchio = numero(d["prezzo_produttore"])
+            prezzo, _, perche = scegli(cands, vecchio, d.get("formato_produttore", ""))
+            if prezzo is None:
+                conta["saltati"] += 1
+                print(f"  [{n}/{len(urls)}] AMBIGUO {url}: {perche}", flush=True)
+                continue
+            if vecchio and not (MIN_RAPPORTO <= prezzo / vecchio <= MAX_RAPPORTO):
+                conta["saltati"] += 1
+                print(f"  [{n}/{len(urls)}] SOSPETTO {url}: {vecchio:g} -> {prezzo:g}, non applicato", flush=True)
+                continue
+            conta["letti"] += 1
+            if aggiorna_riga(tabelle[f][i], tabelle[f][0], prezzo, oggi):
+                conta["cambiati"] += 1
+                chiave = (url, testo_prezzo(vecchio), testo_prezzo(prezzo))
+                if chiave not in visti_storico:
+                    visti_storico.add(chiave)
+                    storico.append([oggi, url, chiave[1], chiave[2]])
+                print(f"  [{n}/{len(urls)}] CAMBIATO {url}: {vecchio:g} -> {prezzo:g} ({metodo})", flush=True)
+            else:
+                conta["invariati"] += 1
 
-    print(f"letti {conta['letti']} (cambiati {conta['cambiati']}, invariati {conta['invariati']}), "
-          f"non letti o saltati {conta['saltati']}, su {len(urls)} indirizzi")
+    print(f"righe lette {conta['letti']} (cambiate {conta['cambiati']}, invariate {conta['invariati']}), "
+          f"non lette o saltate {conta['saltati']}, su {len(urls)} indirizzi")
     if a.solo_controllo:
         print("--solo-controllo: nessun file scritto")
         return

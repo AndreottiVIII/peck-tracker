@@ -448,3 +448,86 @@ ul.voti .fonte { flex: 0 0 11rem; max-width: 55%; font-weight: 600; }
   .lato .cifra { font-size: 1.02rem; }
   .conf-prezzi, .occ-prezzi { gap: .5rem; }
 }
+
+/* ---- Ritagli dalle foto delle box: un quadrato con la foto ingrandita dal CSS; sotto c'e' sempre il disegno ---- */
+.foto.ritaglio-box img.sotto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ritaglio {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 1;
+  background-color: transparent; background-repeat: no-repeat;
+}
+.foto.ritaglio-box.incerta .ritaglio { outline: 2px dashed var(--giallo-scuro); outline-offset: -2px; }
+.foto.ritaglio-box .etic-foto { z-index: 1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.didascalia-ritaglio { margin-top: .5rem; }
+.didascalia-ritaglio .nota-r { display: block; }
+
+/* ---- Storia del fornitore (pagina prodotto) e osservazioni datate (pagina azienda) ---- */
+.storia { border: 2px solid var(--linea); border-left: 6px solid #b8ad95; padding: 1rem 1.1rem 1rem; margin: 0 0 1.3rem; background: #fff; }
+.storia.cambiato { border-left-color: #c4622d; background: #fdf4ee; }
+.st-esito { font-weight: 800; margin: 0 0 .7rem; }
+.st-cambio { color: #8a2f14; }
+.st-uguale { color: #17622f; }
+.linea { list-style: none; margin: 0; padding: 0; border-left: 3px solid var(--giallo-scuro); }
+.linea li { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: .2rem 1rem; padding: .3rem 0 .9rem 1rem; position: relative; }
+.linea li::before { content: ""; position: absolute; left: -9px; top: .55rem; width: 15px; height: 15px; border-radius: 50%; background: var(--giallo); border: 3px solid var(--marrone); }
+.linea li.oggi::before { background: var(--marrone); }
+.linea .data { font-weight: 800; color: var(--marrone); }
+.linea li > div > p { margin: 0 0 .3rem; }
+.st-riga p { margin: 0 0 .2rem; }
+.st-riga blockquote.frase { font-size: .98rem; margin: .1rem 0 .5rem; }
+@media (max-width: 560px) { .linea li { grid-template-columns: minmax(0, 1fr); } }
+.st-badge { display: inline-block; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 800; padding: .15rem .55rem; border-radius: 999px; }
+.st-badge.st-cambio { background: #f6dcd3; color: #7a2a14; }
+.st-badge.st-uguale { background: #dcecdf; color: #17482a; }
+.osservazioni { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linea); }
+.osservazioni li { border-bottom: 1px solid var(--linea); padding: .7rem .2rem; }
+.osservazioni p { margin: 0 0 .3rem; }
+.osservazioni blockquote.frase { font-size: .98rem; margin: 0 0 .3rem; }
+
+/* ---- Valore spacchettato (pagina box) ---- */
+.copertura { height: .7rem; background: var(--linea); border-radius: 999px; overflow: hidden; margin: .2rem 0 .9rem; }
+.copertura span { display: block; height: 100%; background: var(--giallo-scuro); }
+td.num { white-space: nowrap; text-align: right; font-weight: 700; }
+
+/* ---- Offerte di piu' negozi (pagina vino) ---- */
+.offerte { list-style: none; margin: .8rem 0; padding: 0; border-top: 1px solid var(--linea); }
+.offerta { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) auto auto; gap: .3rem .9rem; align-items: center; padding: .55rem .1rem; border-bottom: 1px solid var(--linea); }
+.offerta.nd { opacity: .7; }
+.of-diff { font-weight: 800; }
+@media (max-width: 640px) {
+  .offerta { grid-template-columns: minmax(0, 1fr) auto; }
+  .of-prezzo { grid-column: 1 / -1; }
+  .of-link { grid-column: 1 / -1; }
+}
+.chip-annata, .chip-nd {
+  display: inline-block; font-size: .64rem; font-weight: 800; letter-spacing: .04em; line-height: 1.4; padding: .1rem .5rem; border-radius: 999px; white-space: nowrap; vertical-align: middle;
+}
+.chip-annata { background: var(--giallo-chiaro); border: 1px solid var(--giallo-scuro); color: var(--marrone); }
+.chip-nd { background: #e9e9e9; color: #3d3d3d; }
+.confronto.alternativa { border-style: dashed; border-left-style: solid; }
+
+/* ---- Barra della differenza e pagina «Prezzi confrontati» ---- */
+.barra-diff { position: relative; display: block; height: .55rem; background: var(--linea); border-radius: 999px; margin: .4rem 0 .35rem; overflow: hidden; }
+.barra-diff::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--marrone); opacity: .55; }
+.barra-diff .riempi { position: absolute; top: 0; bottom: 0; min-width: 3px; }
+.barra-diff .riempi.sx { right: 50%; background: #3d8b57; }
+.barra-diff .riempi.dx { left: 50%; background: #c4622d; }
+.barra-diff.d-pari .riempi { background: var(--giallo-scuro); }
+.leg { font-weight: 800; padding: 0 .3rem; }
+.leg-meno { background: #dcecdf; color: #17482a; }
+.leg-pari { background: var(--giallo-chiaro); color: var(--marrone); }
+.leg-piu { background: #f6dcd3; color: #7a2a14; }
+.riepilogo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem 1rem; margin: 1rem 0 .8rem; }
+.riepilogo div { background: var(--crema); border-top: 4px solid var(--giallo); padding: .6rem .8rem; font-size: .86rem; }
+.riepilogo b { display: block; font-size: 1.5rem; font-weight: 900; color: var(--marrone); line-height: 1.2; }
+.gruppo-testa { list-style: none; padding: 1.6rem 0 .4rem; border-bottom: 3px solid var(--giallo); }
+.gruppo-testa h2 { margin: 0; font-size: 1.3rem; }
+.gruppo-testa h2 .meta { font-weight: 600; }
+ul.prezzi { margin-top: .5rem; }
+.of-mini { list-style: none; margin: .15rem 0 0; padding: 0; font-size: .86rem; }
+.of-mini li { margin: 0 0 .4rem; }
+.of-mini li.rif { font-weight: 700; }
+.of-mini li.nd { opacity: .7; }
+.barra-lista .meta { flex: 1 1 18rem; text-align: right; }
+@media (min-width: 800px) { .occ-diff .barra-diff { margin-left: auto; width: 100%; } }
+.occasioni.griglia { display: block; }
+.dettaglio .foto.ritaglio-box { aspect-ratio: 1; }

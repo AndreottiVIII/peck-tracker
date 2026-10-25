@@ -4,7 +4,46 @@
       così "Indietro" riporta alla stessa lista filtrata;
    2. il passaggio Schede / Elenco (?vista=elenco);
    3. l'elenco dei vini dell'enoteca, che si legge da vini.json;
-   4. il riquadro al posto di una foto che non si carica. */
+   4. il riquadro al posto di una foto che non si carica;
+   5. i ritagli delle foto delle box (si caricano solo quando sono vicini allo schermo; se la foto manca resta il disegno);
+   6. la pagina «Prezzi confrontati», che legge prezzi.json (filtri, categorie, pagine). */
+
+/* ---------- 5. ritagli dalle foto delle box ---------- */
+(() => {
+  'use strict';
+  const stato = new Map();   // url della foto -> 'ok' | 'ko' | [elementi in attesa]
+  const mostra = (el, url) => { el.style.backgroundImage = 'url("' + url + '")'; el.classList.add('pronto'); };
+  const manca = el => {      // la foto non si carica: via il ritaglio e la didascalia, resta il disegno che sta sotto
+    const c = el.closest('.ritaglio-box');
+    if (c) { c.classList.add('ko'); const e = c.querySelector('.etic-foto'); if (e) e.remove(); }
+    el.remove();
+  };
+  function carica(el) {
+    const url = el.dataset.src;
+    if (!url) return;
+    const s = stato.get(url);
+    if (s === 'ok') return mostra(el, url);
+    if (s === 'ko') return manca(el);
+    if (s) { s.push(el); return; }
+    stato.set(url, [el]);
+    const im = new Image();
+    im.referrerPolicy = 'no-referrer';
+    im.onload = () => { const a = stato.get(url); stato.set(url, 'ok'); a.forEach(e => mostra(e, url)); };
+    im.onerror = () => { const a = stato.get(url); stato.set(url, 'ko'); a.forEach(manca); };
+    im.src = url;
+  }
+  const io = 'IntersectionObserver' in window
+    ? new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); carica(e.target); } }, { rootMargin: '400px' })
+    : null;
+  window.ptRitagli = root => {
+    for (const el of (root || document).querySelectorAll('.ritaglio[data-src]:not([data-visto])')) {
+      el.dataset.visto = '1';
+      if (io) io.observe(el); else carica(el);
+    }
+  };
+  window.ptRitagli(document);
+})();
+
 
 /* ---------- 0. testata ---------- */
 (() => {
@@ -359,6 +398,149 @@
       console.error(e);
       if (caricamento) caricamento.textContent = 'Non sono riuscito a caricare i vini. Controlla la connessione e riprova, oppure usa l’elenco delle cantine qui sotto.';
       const d = document.getElementById('cantine'); if (d) d.open = true;
+    });
+  }
+
+  /* ---------- Prezzi confrontati (si legge prezzi.json) ---------- */
+  if (cont.hasAttribute('data-prezzi')) {
+    let mostrati = 0, elenco = [], ultimo = null;
+    const bottone = cont.querySelector('button.altri');
+    const caricamento = cont.querySelector('.caricamento');
+    const vivo = document.getElementById('riepilogo-vivo');
+    const PASSO = 40;
+    const SRC = { produttore: 1, altro: 8, tannico: 2, enoteche: 4 };
+    let soglia = 5;
+    const ordineGruppi = {}, etichetteGruppi = {};
+
+    const pctTesto = a => (a >= 10 ? String(Math.round(a)) : a.toFixed(1).replace('.', ',').replace(/,0$/, ''));
+    const pctSegno = dp => (dp == null ? 'n.d.' : Math.abs(dp) < 0.5 ? '≈ 0%' : (dp > 0 ? '+' : '−') + pctTesto(Math.abs(dp)) + '%');
+    const verdetto = dp => {
+      if (Math.abs(dp) < 0.5) return 'Da Peck costa praticamente lo stesso';
+      const p = pctTesto(Math.abs(dp));
+      return 'Da Peck costa ' + (p[0] === '8' || p === '11' ? 'l’' : 'il ') + p + '% in ' + (dp > 0 ? 'più' : 'meno');
+    };
+    const classeDiff = dp => (dp < -soglia ? 'meno' : dp <= soglia ? 'pari' : 'piu');
+    const barra = dp => `<span class="barra-diff d-${classeDiff(dp)}" role="img" aria-label="${esc(verdetto(dp))}"><span class="riempi ${dp > 0 ? 'dx' : 'sx'}" style="width:${(Math.min(Math.abs(dp), 100) / 2).toFixed(1)}%"></span></span>`;
+    const prezzoFormato = (p, f) => euro(p) + (f ? ` <span class="meta">(${esc(f.replace(/\s*\(([^)]*)\)/g, ', $1'))})</span>` : '');
+    const alUnita = (v, u) => (v ? `<span class="meta">${euro(v)} al ${u}</span>` : '');
+    const mediana = a => { if (!a.length) return null; const v = a.slice().sort((x, y) => x - y), n = v.length; return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2; };
+
+    function foto(r) {
+      if (r.t === 'v') {
+        return r.ph ? `<div class="foto bottiglia"><img src="${esc(r.ph)}" alt="Bottiglia: ${esc(r.n)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-ph="vino"></div>`
+          : '<div class="foto bottiglia"><div class="segnaposto vino" role="img" aria-label="Foto non disponibile"></div></div>';
+      }
+      const im = r.im;
+      if (im[0] === 'r') {
+        const [, url, x, y, w, h, media, dis, box] = im;
+        const stile = `background-size:${(100 / w).toFixed(2)}% ${(100 / h).toFixed(2)}%;background-position:${w < 1 ? (x / (1 - w) * 100).toFixed(2) : 0}% ${h < 1 ? (y / (1 - h) * 100).toFixed(2) : 0}%;background-repeat:no-repeat`;
+        const did = 'Dettaglio dalla foto della box «' + box + '»' + (media ? ' (riconosciuto per esclusione)' : '');
+        return `<div class="foto disegno ritaglio-box${media ? ' incerta' : ''}"><img class="sotto" src="${radice + dis}" width="200" height="200" alt="" loading="lazy" decoding="async">` +
+          `<div class="ritaglio" role="img" aria-label="${esc(did + ': ' + r.n)}" data-src="${esc(url)}" style="${esc(stile)}"></div>` +
+          `<span class="etic-foto" title="${esc(did)}">Dettaglio dalla box${media ? ' · per esclusione' : ''}</span></div>`;
+      }
+      if (im[0] === 'd') return `<div class="foto disegno"><img src="${radice + im[1]}" width="200" height="200" alt="Disegno: ${esc(im[2])}" loading="lazy" decoding="async"></div>`;
+      if (im[0] === 'i') return `<div class="foto"><img src="${esc(im[1])}" alt="Foto di ${esc(r.n)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-ph="cibo"></div>`;
+      return '<div class="foto"><div class="segnaposto cibo" role="img" aria-label="Foto non disponibile"></div></div>';
+    }
+    const esterno = (url, testo, cl) => (url ? `<a${cl ? ` class="${cl}"` : ''} href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(testo)}<span class="sr"> (si apre in una nuova scheda)</span></a>` : esc(testo));
+
+    function riga(r) {
+      const dp = r.dp;
+      const nome = r.h ? `<a href="${radice + r.h}">${esc(r.n)}</a>` : esc(r.n);
+      let meta, peck, fuori;
+      if (r.t === 'c') {
+        const f = r.fu[0], altro = (r.s & 8) !== 0;
+        meta = `Confrontato con: ${esterno(f[2], f[0])}` + (r.sd ? ' <span class="chip-nd">solo nel delivery, non nello shop</span>' : '');
+        peck = `<div class="lato"><p class="et">Da Peck</p><p class="cifra">${prezzoFormato(r.pk[0], r.pk[1])}</p><p>${alUnita(r.pk[2], r.pk[3])}</p></div>`;
+        fuori = `<div class="lato"><p class="et">${altro ? 'Da un altro produttore' : 'Dal produttore'}</p><p class="cifra">${prezzoFormato(f[3], f[4])}</p><p>${alUnita(f[5], f[6])}</p></div>`;
+      } else {
+        meta = [r.ti, r.r, r.pa].filter(Boolean).map(esc).join(' · ') + (r.a ? ' · ' + esc(r.a) : '');
+        peck = `<div class="lato"><p class="et">Da Peck</p><p class="cifra">${euro(r.pk[0])} <span class="meta">(${String(r.l).replace('.', ',')} L)</span></p><p><span class="meta">${euro(r.pk[1])} al litro</span></p></div>`;
+        const of = r.fu.map(o => `<li class="${o[5] ? '' : 'nd'}${o[8] ? ' rif' : ''}">${esterno(o[1], o[0])}${o[7] ? '' : ` <span class="chip-annata">annata ${esc(o[2] || '?')}</span>`}${o[5] ? '' : ' <span class="chip-nd">non disponibile</span>'}<br>` +
+          `${euro(o[3])} <span class="meta">(${euro(o[4])} al litro) · ${pctSegno(o[6])}</span></li>`).join('');
+        fuori = `<div class="lato"><p class="et">${'Altrove'}</p><ul class="of-mini">${of}</ul></div>`;
+      }
+      const pagina = r.h ? `<a class="vai-pagina" href="${radice + r.h}">Vai alla pagina<span class="sr"> di ${esc(r.n)}</span></a>` : '';
+      const nd = r.nd ? '<p class="meta">Oggi nessun negozio ha la bottiglia in vendita: prezzi dell’ultima volta.</p>' : '';
+      return `<li class="occ" data-g="${esc(r.g)}">${foto(r)}` +
+        `<div class="occ-nome"><p class="cat">${r.t === 'c' ? 'Cibo' : 'Vino'} · ${esc(r.st)}</p><p class="nome">${nome}</p><p class="meta">${meta}</p>${pagina}</div>` +
+        `<div class="occ-prezzi">${peck}${fuori}</div>` +
+        `<div class="occ-diff v-${classeDiff(dp)}"><p class="grande">${pctSegno(dp)}</p>${barra(dp)}<p class="meta">${esc(verdetto(dp))} (${esc(r.b)})</p>${nd}</div></li>`;
+    }
+
+    function filtra(S) {
+      const q = norm(S.q || '').split(/\s+/).filter(Boolean);
+      const modo = S.ord;
+      const arr = V.righe.filter(r => {
+        if (S.cat && r.g !== S.cat) return false;
+        if (S.reg && !(r.t === 'v' && r.r === S.reg)) return false;
+        if (S.fonte && !(r.s & SRC[S.fonte])) return false;
+        if (S.stesso && r.sp !== 3) return false;
+        if (S.occ && !(r.x === 1 && r.dp <= soglia)) return false;
+        if (q.length) {
+          if (!r.k) r.k = norm([r.n, r.fu.map(f => f[0]).join(' '), r.r || '', r.pa || '', r.ti || '', etichetteGruppi[r.g] || ''].join(' '));
+          if (!q.every(t => r.k.includes(t))) return false;
+        }
+        return true;
+      });
+      const nome = (a, b) => a.n.localeCompare(b.n, 'it', { numeric: true });
+      if (modo === 'dp-su') arr.sort((a, b) => a.dp - b.dp || nome(a, b));
+      else if (modo === 'dp-giu') arr.sort((a, b) => b.dp - a.dp || nome(a, b));
+      else if (modo === 'nome') arr.sort(nome);
+      else arr.sort((a, b) => (ordineGruppi[a.g] - ordineGruppi[b.g]) || a.dp - b.dp || nome(a, b));
+      return arr;
+    }
+
+    function disegna(daCapo) {
+      const S = leggiStato();
+      elenco = filtra(S);
+      const raggruppa = !S.ord;
+      const n = elenco.length;
+      scrittoConteggio(n);
+      vuoto.hidden = n !== 0;
+      if (vivo) {
+        const m = mediana(elenco.map(r => r.dp));
+        const meno = elenco.filter(r => r.dp <= soglia).length;
+        vivo.textContent = n ? `Differenza mediana di quelli mostrati: ${pctSegno(m)}. Peck costa meno o al massimo +${String(soglia).replace('.', ',')}% in ${num(meno)}.` : '';
+      }
+      if (daCapo) { mostrati = PASSO; ul.replaceChildren(); ultimo = null; }
+      const conta = {};
+      if (raggruppa) for (const r of elenco) conta[r.g] = (conta[r.g] || 0) + 1;
+      let html = '';
+      for (const r of elenco.slice(ul.querySelectorAll('li.occ').length, mostrati)) {
+        if (raggruppa && r.g !== ultimo) {
+          ultimo = r.g;
+          html += `<li class="gruppo-testa"><h2>${esc(etichetteGruppi[r.g] || r.g)} <span class="meta">(${num(conta[r.g])})</span></h2></li>`;
+        }
+        html += riga(r);
+      }
+      ul.insertAdjacentHTML('beforeend', html);
+      if (window.ptRitagli) window.ptRitagli(ul);
+      const visti = ul.querySelectorAll('li.occ').length;
+      bottone.hidden = n <= visti;
+      bottone.textContent = `Mostra altri (${num(n - visti)})`;
+      return S;
+    }
+
+    aggiornaEnoteca = () => disegna(true);
+    bottone.addEventListener('click', () => {
+      const prima = ul.querySelectorAll('li.occ').length;
+      mostrati += PASSO;
+      disegna(false);
+      const nuovo = ul.querySelectorAll('li.occ')[prima];
+      const a = nuovo && nuovo.querySelector('a');
+      if (a) a.focus({ preventScroll: true });
+    });
+    fetch(cont.dataset.json).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => {
+      V = j;
+      soglia = j.meta.soglia;
+      j.meta.gruppi.forEach((g, i) => { ordineGruppi[g.k] = i; etichetteGruppi[g.k] = g.t; });
+      if (caricamento) caricamento.remove();
+      disegna(true);
+    }).catch(e => {
+      console.error(e);
+      if (caricamento) caricamento.textContent = 'Non sono riuscito a caricare i confronti. Controlla la connessione e riprova, oppure guarda l’Angolo delle occasioni.';
     });
   }
 

@@ -297,14 +297,22 @@ COLORI = {"rouge": "rosso", "rosso": "rosso", "red": "rosso", "tinto": "rosso", 
           "blanc": "bianco", "bianco": "bianco", "white": "bianco", "blanco": "bianco"}
 
 
+CRU = {"cru", "grand", "1er", "premier", "classe"}
+
+
 def stesso_vino_slug(v, alts, testo_slug):
     """Nome uguale parola per parola, tolta la cantina; denominazioni/vitigni ignorabili solo se stanno da una parte.
     'Brut' da solo e' ignorabile (Peck lo omette spesso); 'rouge/blanc' che Peck non scrive contano solo se
     il colore e' quello del vino Peck (altrimenti e' un altro vino: Domaine de Chevalier rosso / bianco)."""
     togli = set().union(*alts)
+    testo_slug = re.sub(r"d(alba|asti|abruzzo|alsazia)", r"", testo_slug)    # d'Alba scritto "dalba" negli indirizzi
     np_, ip = VA.nucleo_stretto(v["nome"], togli)
     nf, i_f = VA.nucleo_stretto(testo_slug, togli)
     for ins, ign in ((np_, ip), (nf, i_f)):
+        # "Grand Cru Classe", "1er Cru": Peck e i negozi li scrivono o li omettono; il nome vero resta richiesto uguale
+        for w in CRU & ins:
+            ins.discard(w)
+            ign.add(w)
         if "brut" in ins:
             ins.discard("brut")
             ign.add("brut")

@@ -9,8 +9,10 @@ Rilegge le fonti pubbliche che si possono riscaricare e poi riscrive il sito. Un
   voti_tannico       schede Tannico dei vini abbinati: si scaricano solo quelle che non ci sono ancora (3 s di pausa)
   confronto_vini     prezzi Peck / Tannico al litro (src/confronto_vini.py)
   prezzi_produttori  prezzi dei produttori nei confronti del cibo (src/aggiorna_prezzi_produttori.py)
+  box_valore         valore spacchettato delle box con i prezzi appena riletti (src/box_valore.py, offline)
   voti_aperti        voti Wine Enthusiast / X-Wines (src/voti_aperti.py abbina): solo se i dataset sono su disco
   voti_enoteche      voti dai negozi (src/voti_enoteche.py): SPENTO, si accende con la variabile VOTI_ENOTECHE=si
+  confronto_enoteche prezzi Peck / negozi (src/confronto_vini_enoteche.py): solo se le schede dei negozi sono su disco
   foto_shop          pagine dello shop Peck per le foto (src/fetch.py): solo se mancano (computer pulito)
   sito               src/sito.py: riscrive docs/ (se questo passo fallisce il programma esce con errore)
 
@@ -219,6 +221,27 @@ def p_prezzi_produttori():
           soglia=0.99)
 
 
+def p_box_valore():
+    """Il «valore spacchettato» delle box: usa i prezzi appena aggiornati (tutto offline)."""
+    cartella = DATA / "confronto"
+    if not (RADICE / "src" / "box_valore.py").exists():
+        registra("valore delle box", "saltato: manca src/box_valore.py")
+        return
+    passo("valore delle box", ["src/box_valore.py"], 5,
+          protetti=[cartella / "box_valore.csv", cartella / "box_valore_righe.csv"])
+
+
+def p_confronto_enoteche():
+    """Prezzi Peck / negozi online, letti dalle schede gia' salvate in data/raw/voti/<enoteca>/pagine (nessuno scarico).
+    Su un computer pulito non ci sono: il file resta com'e'."""
+    pagine = [p for p in (RAW / "voti").glob("*/pagine") if p.is_dir() and any(p.iterdir())]
+    if not (RADICE / "src" / "confronto_vini_enoteche.py").exists() or not pagine:
+        registra("prezzi vini / negozi", "saltato: schede dei negozi non su disco (il file resta com'e')")
+        return
+    passo("prezzi vini / negozi", ["src/confronto_vini_enoteche.py"], 8,
+          protetti=[DATA / "confronto" / "vini_enoteche_prezzi.csv"], soglia=0.9)
+
+
 def p_voti_aperti(scarica):
     voti = RAW / "voti"
     necessari = [voti / "wine_enthusiast" / "p1.csv", voti / "xwines" / "XWines_Full_100K_wines.csv",
@@ -297,7 +320,8 @@ def main():
     passi = {
         "winerim": p_winerim, "tannico": p_tannico, "voti_tannico": p_voti_tannico,
         "confronto_vini": p_confronto_vini, "prezzi_produttori": p_prezzi_produttori,
-        "voti_aperti": None, "voti_enoteche": p_voti_enoteche, "foto_shop": p_foto_shop,
+        "box_valore": p_box_valore, "voti_aperti": None, "voti_enoteche": p_voti_enoteche,
+        "confronto_enoteche": p_confronto_enoteche, "foto_shop": p_foto_shop,
     }
     ap = argparse.ArgumentParser()
     ap.add_argument("--budget-minuti", type=float, default=50)

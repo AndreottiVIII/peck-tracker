@@ -46,7 +46,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from bs4 import BeautifulSoup
 
@@ -64,6 +64,7 @@ LINK_WINERIM_PREFISSO = "https://web.winerim.com/enotecapeck/wines/"
 DATA_FOTOGRAFIA = "2026-10-24"
 DATA_DELIVERY = "2026-10-25"          # il giorno in cui abbiamo guardato il catalogo del servizio delivery
 FONTE_DELIVERY = "dal servizio delivery di Peck, 25 ottobre 2026"
+DATA_FOTOGRAFIA_LUNGA = "24 ottobre 2026"   # = DATA_FOTOGRAFIA, per la linea del tempo del fornitore
 AVVISO = "Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita."
 
 # ---------------------------------------------------------------------------
@@ -446,6 +447,43 @@ def prezzo_delivery(dv):
     return f"{p} al kg" if dv["unita"] == "KG" else f"{p} ({dv['formato']})"
 
 
+def foto_chiave(url):
+    """Per riconoscere la stessa foto scritta in due modi (%27 e '), confrontando solo il nome del file."""
+    return unquote(url or "").strip().rsplit("/", 1)[-1].lower()
+
+
+def carica_ritagli():
+    """data/ritagli.csv -> {chiave Dispensa: dict}. Il rettangolo (x, y, w, h) e' in frazioni della foto della box."""
+    f = DATI / "ritagli.csv"
+    if not f.exists():
+        return {}
+    out = {}
+    for r in leggi_csv("ritagli"):
+        try:
+            x, y, w, h = (float(r[k]) for k in ("x", "y", "w", "h"))
+        except (KeyError, ValueError):
+            continue
+        url = (r.get("url_foto_box") or "").strip()
+        if not (0 <= x < 1 and 0 <= y < 1 and 0 < w <= 1 and 0 < h <= 1) or not url.startswith(FOTO_PECK_HOST):
+            continue
+        out[r["chiave"].strip()] = {"url": url, "x": x, "y": y, "w": min(w, 1 - x), "h": min(h, 1 - y),
+                                    "certezza": (r.get("certezza") or "alta").strip(), "nota": (r.get("nota") or "").strip()}
+    return out
+
+
+def luogo_da_chiave(a):
+    """(comune, provincia, paese) dalla chiave di una riga di aziende.csv: «Via X 5, Bisceglie (BT)» o «ES 12.00487/H CE»."""
+    k = a["chiave"]
+    if a["tipo_chiave"] == "bollo_ce":
+        return "", "", {"ES": "Spagna"}.get(k.strip()[:2].upper(), "")
+    ultimo = k.split(",")[-1].strip()
+    m = re.fullmatch(r"(.+?)(?:\s*\((\w{2})\))?", ultimo)
+    comune, prov = (m.group(1), (m.group(2) or "").upper()) if m else (ultimo, "")
+    if not prov:
+        prov = COMUNE_PROV.get(nz(comune), "")
+    return comune, prov, "Italia" if prov else ""
+
+
 def costruisci_cibo():
     prodotti = leggi_csv("prodotti")
     elementi = leggi_csv("elementi")
@@ -523,6 +561,28 @@ def costruisci_cibo():
             e["foto"], e["foto_tipo"], e["foto_da"] = dv["foto_url"], "delivery", "servizio delivery di Peck"
             e["disegno"] = ""
 
+    # --- ritagli dalle foto delle box (data/ritagli.csv): per i prodotti senza foto propria e senza foto del delivery
+    ritagli = carica_ritagli()
+    box_per_foto = defaultdict(list)
+    for u, b in box.items():
+        if b["foto"]:
+            box_per_foto[foto_chiave(b["foto"])].append(b)
+    ritagli_senza_box = []
+    for nome in ordine:
+        e = elem[nome]
+        e["ritaglio"] = None
+        rt = ritagli.get(e["id"])
+        if not rt or e["foto_tipo"] in ("prodotto", "delivery"):
+            continue
+        cand = box_per_foto.get(foto_chiave(rt["url"]), [])
+        dentro = [b for b in cand if b["url"] in e["box"]]
+        b = (dentro or cand or [None])[0]
+        if b is None:
+            ritagli_senza_box.append(e["id"])
+            continue
+        e["ritaglio"] = dict(rt, box_id=b["id"], box_nome=b["nome"])
+    ritagli_non_usati = sorted(set(ritagli) - {elem[n]["id"] for n in ordine if elem[n]["ritaglio"]})
+
     # --- province mancanti (comune -> provincia dagli altri dati)
     comune_prov = {}
     for r in elementi:
@@ -561,7 +621,7 @@ def costruisci_cibo():
                 "id": aid, "nome": rag or "Azienda non trovata", "marchio": "", "sito": "",
                 "shop_online": "", "link_shop": "", "fonti": [], "certezza": a["certezza"],
                 "chiavi": [], "note": [], "prodotti": [], "luoghi": Counter(), "paese": "",
-                "trovata": bool(rag),
+                "trovata": bool(rag), "prodotti_testo": [], "fuori": False, "osservazioni": [],
             }
             if rag and nome_k:
                 per_nome[nome_k] = aid
@@ -585,6 +645,10 @@ def costruisci_cibo():
                             "certezza": a["certezza"], "fonte": a["fonte"]})
         if a["nota"]:
             z["note"].append(a["nota"])
+        for t in (a.get("prodotti_peck") or "").split(";"):
+            t = t.strip()
+            if t and t not in z["prodotti_testo"]:
+                z["prodotti_testo"].append(t)
         riga_a_azienda[k] = aid
         return aid
 
@@ -595,7 +659,7 @@ def costruisci_cibo():
             "Sono i prodotti per cui Peck scrive di averli prodotti o confezionati nella sua sede "
             "di via Spadari 9, a Milano."],
         "prodotti": [], "luoghi": Counter({("Milano", "MI", "Italia"): 1}), "paese": "Italia",
-        "trovata": True,
+        "trovata": True, "prodotti_testo": [], "fuori": False, "osservazioni": [],
     }
 
     # --- origini di ogni elemento
@@ -660,6 +724,15 @@ def costruisci_cibo():
             if a["ragione_sociale"] and nk in per_nome:
                 id_azienda(a)
 
+    # aziende di aziende.csv che nessun prodotto dello shop 2026 usa ma che hanno un nome e una ricerca fatta
+    # (visti nel 2025, nel delivery o in un secondo giro): hanno la loro pagina, segnata «fuori dallo shop del 2026»
+    for a in aziende.righe:
+        if ((a["tipo_chiave"], nz(a["chiave"])) not in riga_a_azienda and (a["ragione_sociale"] or "").strip()
+                and a["certezza"] in (CERTA, PROBABILE)):
+            aid = id_azienda(a)
+            aziende_out[aid]["fuori"] = True
+            aziende_out[aid]["luoghi"][luogo_da_chiave(a)] += 1
+
     # --- azienda: luogo principale e prodotti
     for z in aziende_out.values():
         # un luogo con comune vince su uno senza
@@ -704,7 +777,7 @@ def costruisci_cibo():
             "id": e["id"], "nome": e["nome"], "nome_originale": e["nome_originale"],
             "categoria": e["categoria"], "stato": e["stato"], "regioni": e["regioni"],
             "foto": e["foto"], "foto_tipo": e["foto_tipo"], "foto_da": e["foto_da"],
-            "disegno": e["disegno"], "delivery": e["delivery"],
+            "disegno": e["disegno"], "delivery": e["delivery"], "ritaglio": e["ritaglio"],
             "box": [id_box[u] for u in e["box"] if u in id_box], "origini": e["origini"],
         })
     id_el = {n: elem[n]["id"] for n in ordine}
@@ -718,8 +791,9 @@ def costruisci_cibo():
         })
     produttori = []
     for z in aziende_out.values():
-        if not z["prodotti"]:
+        if not z["prodotti"] and not z["fuori"]:
             continue  # righe di aziende.csv senza nessun prodotto sul sito
+        z["fuori"] = not z["prodotti"]
         z["chiavi"] = [dict(t) for t in {tuple(sorted(c.items())) for c in z["chiavi"]}]
         z["chiavi"].sort(key=lambda c: (c["tipo"], c["chiave"]))
         z["note"] = list(dict.fromkeys(z["note"]))
@@ -739,6 +813,8 @@ def costruisci_cibo():
         "disegni": Counter(d["disegno"] or "(foto propria)" for d in dispensa),
         "box_conteggio_diverso": [(b["nome"], b["n_elementi"], b["n_elementi_dichiarati"])
                                   for b in box_out if b["n_elementi"] != b["n_elementi_dichiarati"]],
+        "ritagli": sum(1 for d in dispensa if d["ritaglio"]), "ritagli_senza_box": ritagli_senza_box,
+        "ritagli_non_usati": ritagli_non_usati, "_aziende": aziende, "_riga_a_azienda": riga_a_azienda,
         "aziende_non_usate": [a["chiave"] for a in aziende.righe
                               if (a["tipo_chiave"], nz(a["chiave"])) not in riga_a_azienda],
     }
@@ -1241,7 +1317,7 @@ STATI_TESTO = {"certa": "certa", "probabile": "probabile", "non trovata": "non t
 TIPI_CHIAVE = {"indirizzo": "Indirizzo", "bollo_ce": "Bollo CE", "produttore": "Produttore nominato"}
 MENU = [("dispensa", "Dispensa", "dispensa/"), ("box", "Box regalo", "box/"),
         ("produttori", "Produttori", "produttori/"), ("enoteca", "Enoteca", "enoteca/"),
-        ("occasioni", "Occasioni", "occasioni/"), ("come-funziona", "Come funziona", "come-funziona/")]
+        ("occasioni", "Occasioni", "occasioni/"), ("prezzi", "Prezzi confrontati", "prezzi/"), ("come-funziona", "Come funziona", "come-funziona/")]
 GIALLO_PECK = "#FFCD45"    # --giallo-peck nel CSS di peck.it
 MARRONE_PECK = "#5E4824"   # --marrone-peck nel CSS di peck.it
 
@@ -1335,9 +1411,43 @@ def foto_html(url, alt, tipo="cibo", etichetta=""):
     return f'<div class="{classe}">{img}{et}</div>'
 
 
-def immagine_cibo(it, r):
-    """Il disegno nostro (docs/disegni/) se il prodotto non ha una foto propria, se no la foto di Peck."""
+def stile_ritaglio(rt):
+    """Il ritaglio con il solo CSS: la foto della box ingrandita (100/w, 100/h) e spostata sul rettangolo (x, y, w, h)."""
+    w, h, x, y = rt["w"], rt["h"], rt["x"], rt["y"]
+    px = x / (1 - w) * 100 if w < 1 else 0
+    py = y / (1 - h) * 100 if h < 1 else 0
+    return (f"background-size:{100 / w:.2f}% {100 / h:.2f}%;background-position:{px:.2f}% {py:.2f}%;"
+            f"background-repeat:no-repeat")
+
+
+def didascalia_ritaglio(rt, r, link=True):
+    """«Dettaglio dalla foto della box «Nome»» (con il link alla pagina della box); per esclusione se la certezza e' media."""
+    nome = H(rt["box_nome"])
+    box = f'<a href="{r}box/{rt["box_id"]}/">{nome}</a>' if link else nome
+    t = f"Dettaglio dalla foto della box «{box}»"
+    if rt["certezza"] == "media":
+        t += " (riconosciuto per esclusione)"
+    return t
+
+
+def immagine_cibo(it, r, eager=False):
+    """Un ritaglio della foto della box (collegata, mai copiata) se c'e'; se no il disegno nostro (docs/disegni/)
+    se il prodotto non ha una foto propria; se no la foto di Peck. Il disegno resta sotto al ritaglio: si vede
+    se la foto non si carica (lo decide app.js). eager = il ritaglio e' scritto subito nella pagina
+    (pagina del prodotto); altrimenti app.js lo carica solo quando e' vicino allo schermo (le foto delle box pesano 1 MB)."""
     d = it.get("disegno")
+    rt = it.get("ritaglio")
+    if rt and d:
+        alt = f"Dettaglio dalla foto della box «{rt['box_nome']}»: {it['nome']}"
+        bg = f"background-image:url({rt['url']!r});" if eager else ""
+        bg = bg.replace("'", '"')
+        classe = "foto disegno ritaglio-box" + (" incerta" if rt["certezza"] == "media" else "")
+        corto = "Dettaglio dalla box" + (" · per esclusione" if rt["certezza"] == "media" else "")
+        return (f'<div class="{classe}"><img class="sotto" src="{r}disegni/{d}.svg" width="200" height="200" alt="" '
+                f'loading="lazy" decoding="async">'
+                f'<div class="ritaglio" role="img" aria-label="{H(alt)}" data-src="{H(rt["url"])}" '
+                f'style="{H(bg + stile_ritaglio(rt))}"></div>'
+                f'<span class="etic-foto" title="{H(re.sub(r"<[^>]+>", "", didascalia_ritaglio(rt, r, False)))}">{H(corto)}</span></div>')
     if not d:
         dove = "dal servizio delivery di Peck" if it.get("foto_tipo") == "delivery" else "dal sito Peck"
         return foto_html(it["foto"], "Foto di " + it["nome"] + " " + dove)
@@ -1385,6 +1495,7 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
 <title>{H(titolo_pagina)}</title>
 <meta name="description" content="{H(descr)}">
 <meta name="theme-color" content="{GIALLO_PECK}">
+<meta name="referrer" content="no-referrer">
 <link rel="canonical" href="{H(canon)}">
 <link rel="icon" href="{FAVICON}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1696,8 +1807,17 @@ def pagina_prodotto(it, az, boxes, r):
         blocchi.append(f'<div class="origine"><p class="etichetta">{H(etichetta)}</p>{frase}'
                        + (f'<dl class="dati">{dl}</dl>' if dl else "") + nota + riq + "</div>")
     in_box = [boxes[b] for b in it["box"] if b in boxes]
-    nota_foto = ('<p class="meta">Peck non mostra una foto di questo prodotto da solo: il disegno è nostro.</p>'
-                 if it["disegno"] else "")
+    rt = it.get("ritaglio")
+    if rt:
+        nota_foto = ('<p class="meta">Peck non mostra una foto di questo prodotto da solo: questo è un ingrandimento della foto della box '
+                     '(collegata dal sito di Peck, non copiata). Se non si carica, resta il nostro disegno.</p>')
+        didascalia = (f'<p class="meta didascalia-ritaglio">{didascalia_ritaglio(rt, r)}'
+                      + (f'. <span class="nota-r">{H(cap(rt["nota"]))}.</span>' if rt["certezza"] == "media" and rt["nota"] else "")
+                      + "</p>")
+    else:
+        nota_foto = ('<p class="meta">Peck non mostra una foto di questo prodotto da solo: il disegno è nostro.</p>'
+                     if it["disegno"] else "")
+        didascalia = ""
     vedi_foto = ""
     if it["disegno"] and any(boxes[b]["foto"] for b in it["box"] if b in boxes):
         testo = ("Vedi la foto della box che lo contiene" if len(in_box) == 1
@@ -1708,7 +1828,7 @@ def pagina_prodotto(it, az, boxes, r):
     corpo = f"""{briciole(r, ("Dispensa", "dispensa/"), (it["nome"], None))}
 <article>
 <div class="dettaglio">
-<div class="colonna-foto">{immagine_cibo(it, r)}{vedi_foto}</div>
+<div class="colonna-foto">{immagine_cibo(it, r, eager=True)}{didascalia}{vedi_foto}</div>
 <div>
 <p class="etichetta">{H(cap(it["categoria"]))}</p>
 <h1>{H(it["nome"])}</h1>
@@ -1721,7 +1841,9 @@ def pagina_prodotto(it, az, boxes, r):
 <section class="sezione"><h2>Chi lo fa e dove</h2>
 {"".join(blocchi) if blocchi else "<p>Nessuna indicazione.</p>"}
 </section>
+{blocco_storia(it, az, r)}
 {blocco_confronto(it, az)}
+{blocco_alternative(it)}
 <section class="sezione" id="box"><h2>{"Dove lo trovi su Peck" if len(in_box) == 1 else f"Lo trovi in {len(in_box)} pagine di Peck"}</h2>
 <ul class="griglia">{"".join(f"<li>{scheda_box_corta(b, r)}</li>" for b in in_box)}</ul>
 <p class="meta" style="margin-top:1rem">Le pagine qui sopra sono le nostre; da ognuna puoi andare alla pagina originale di Peck.</p>
@@ -1761,7 +1883,7 @@ def pagina_box_lista(box, items):
 </section>"""
 
 
-def pagina_box(b, items, az, r):
+def pagina_box(b, items, az, r, bv=None):
     its = [items[i] for i in b["elementi"] if i in items]
     con_azienda = sum(1 for i in its if i["stato"] in ("certa", "probabile"))
     righe = []
@@ -1787,6 +1909,7 @@ def pagina_box(b, items, az, r):
 <section class="sezione"><h2>La box spacchettata</h2>
 <ul class="righe">{"".join(righe)}</ul>
 </section>
+{blocco_valore(b, bv, items, r)}
 </article>"""
     descr = f"{b['nome']} ({b['prezzo_testo']}): i {len(its)} prodotti della pagina Peck con chi li fa e dove. {AVVISO}"
     return corpo, descr
@@ -1803,6 +1926,7 @@ def pagina_produttori_lista(produttori):
         reg = f" · {z['regione']}" if z["regione"] and z["regione"] != z["paese"] else ""
         marchio = f"Marchio: {z['marchio']}" if z["marchio"] and z["trovata"] else ""
         n = len(z["prodotti"])
+        per_peck = f"Per Peck: {n} {'prodotto' if n == 1 else 'prodotti'}" if n else "Fuori dallo shop del 2026"
         shop = ' <span class="badge b-shop">shop online</span>' if z["shop"] else ""
         voci.append(
             f'<li class="it" data-k="{H(z["k"])}" data-s="{H(z["certezza"])}" data-g="|{H(z["regione"])}|" '
@@ -1810,7 +1934,7 @@ def pagina_produttori_lista(produttori):
             f'<a class="scheda azienda" href="../produttore/{z["id"]}/"><div class="corpo">'
             f'<div class="col-a"><p class="nome">{H(z["nome"] if z["trovata"] else "Azienda non trovata")}</p>'
             f'<p class="meta">{H(marchio)}</p></div>'
-            f'<p class="meta"><span class="col-b">Per Peck: {n} {"prodotto" if n == 1 else "prodotti"}</span>'
+            f'<p class="meta"><span class="col-b">{per_peck}</span>'
             f'<span class="col-c">{H(dove)}{H(reg)}</span></p>'
             f'<div class="col-d">{badge(z["certezza"])}{shop}</div></div></a></li>')
     regioni = sorted({z["regione"] for z in produttori if z["regione"]}, key=str.lower)
@@ -1861,6 +1985,20 @@ def pagina_produttore(z, items, az, r):
         trovata = f'<section class="sezione"><h2>Come l’abbiamo trovata</h2><ul>{chiavi}</ul>{altre}{note}</section>'
     elif note:
         trovata = note
+    if z.get("fuori"):
+        voci_t = "".join(f"<li>{H(t)}</li>" for t in z.get("prodotti_testo") or [])
+        sezione_prodotti = ('<section class="sezione"><h2>Fuori dallo shop online del 2026</h2>'
+                            '<p>Nello shop online di Peck, nella fotografia del ' + data_lunga(DATA_FOTOGRAFIA) + ', non c’è nessun prodotto che risulti fatto da questa azienda. '
+                            'La abbiamo trovata in una fotografia di una data passata (vedi sotto), nel servizio delivery di Peck o in un secondo giro di ricerche.</p>'
+                            + (f'<p class="meta">Prodotti collegati, come li scrive la ricerca:</p><ul>{voci_t}</ul>' if voci_t else "") + "</section>")
+    else:
+        sezione_prodotti = (f'<section class="sezione"><h2>Cosa fa per Peck ({len(prod)})</h2>'
+                            f'<ul class="righe">{righe}</ul></section>')
+    sezione_prezzi = ""
+    if z.get("n_conf"):
+        sezione_prezzi = (f'<section class="sezione"><h2>Prezzi confrontati</h2><p>Abbiamo {z["n_conf"]} '
+                          f'{"confronto" if z["n_conf"] == 1 else "confronti"} di prezzo con i prodotti di questa azienda: '
+                          f'<a href="{r}prezzi/?q={quote(z["nome"])}">vedili in Prezzi confrontati</a>.</p></section>')
     corpo = f"""{briciole(r, ("Produttori", "produttori/"), (nome, None))}
 <article>
 <p class="etichetta">{"Peck stessa" if z["id"] == "peck" else "Produttore"}</p>
@@ -1870,12 +2008,12 @@ def pagina_produttore(z, items, az, r):
 <dl class="dati">{dl}</dl>
 <div class="gruppo-bottoni">{azienda_riquadro_link(z)}</div>
 {trovata}
-<section class="sezione"><h2>Cosa fa per Peck ({len(prod)})</h2>
-<ul class="righe">{righe}</ul>
-</section>
+{sezione_prodotti}
+{blocco_osservazioni(z, az, r)}
+{sezione_prezzi}
 </article>"""
-    descr = (f"{nome}" + (f", {dove_txt}" if dove_txt else "") + f": fa {len(prod)} "
-             f"{'prodotto' if len(prod) == 1 else 'prodotti'} venduti da Peck. Quanto siamo sicuri: "
+    descr = (f"{nome}" + (f", {dove_txt}" if dove_txt else "") + (f": fa {len(prod)} "
+             f"{'prodotto' if len(prod) == 1 else 'prodotti'} venduti da Peck." if prod else ": oggi non ha prodotti nello shop online di Peck.") + " Quanto siamo sicuri: "
              f"{STATI_TESTO.get(z['certezza'], z['certezza'])}. {AVVISO}")
     return corpo, descr
 
@@ -2341,6 +2479,8 @@ def carica_confronti_cibo():
                     "ingr": (r["ingredienti_confrontati"] or "").strip().lower() == "si",
                     "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip(),
                     "ordine": len(out), "item": None,
+                    "cod": (r.get("cod_art_delivery") or "").strip(), "nome_delivery": (r.get("nome_delivery") or "").strip(),
+                    "file": Path(f).name,
                 }
                 if sim == "non verificato":
                     c["p_peck"] = c["p_prod"] = c["dp"] = None     # nessun prezzo del produttore: niente da confrontare
@@ -2478,129 +2618,424 @@ def chip_confronto(it):
     return f' <span class="chip-conf c-{classe}" title="{H(tit)}">{H(chip_testo(dp))}</span>'
 
 
-# --- vini ------------------------------------------------------------------
-
-def carica_confronto_vini():
-    """data/confronto/vini_tannico.csv -> {id vino: riga} per le sole righe «confrontabile = si»."""
-    f = DATI / "confronto" / "vini_tannico.csv"
-    if not f.exists():
-        return {}
-    out = {}
-    with open(f, encoding="utf-8-sig", newline="") as fh:
-        for r in csv.DictReader(fh):
-            if (r["confrontabile"] or "").strip().lower() != "si":
-                continue
-            c = {
-                "id": r["id"], "p_peck": num_conf(r["prezzo_peck"]), "p_tan": num_conf(r["prezzo_tannico"]),
-                "l_peck": num_conf(r["litri_peck"]), "l_tan": num_conf(r["litri_tannico"]),
-                "pl_peck": num_conf(r["prezzo_peck_al_litro"]), "pl_tan": num_conf(r["prezzo_tannico_al_litro"]),
-                "dp": num_conf(r["differenza_pct"]), "a_peck": (r["annata_peck"] or "").strip(),
-                "a_tan": (r["annata_tannico"] or "").strip(), "url": (r["url_tannico"] or "").strip(),
-                "disp": (r["disponibile_tannico"] or "").strip().lower() == "si",
-                "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip(),
-            }
-            if c["dp"] is None and c["pl_peck"] and c["pl_tan"]:
-                c["dp"] = (c["pl_peck"] / c["pl_tan"] - 1) * 100
-            if c["dp"] is None or c["p_peck"] is None or c["p_tan"] is None:
-                continue
-            out[c["id"]] = c
-    return out
-
-
 def litri_testo(x):
     return f"{litri_it(x)} L" if x is not None else ""
 
 
-def confronto_vino(w, CV):
-    """Il riquadro «Prezzi altrove» nella pagina di un vino (solo se il confronto con Tannico c'e')."""
-    c = CV.get(str(w["id"]))
-    if not c:
+# --- vini ------------------------------------------------------------------
+# Un «gruppo» = una bottiglia della carta di Peck in un formato (id vino + litri) con tutte le offerte confrontabili
+# di altri negozi: Tannico (vini_tannico.csv) e le enoteche Callmewine, Millesima, Xtrawine (vini_enoteche_prezzi.csv).
+
+ENOTECHE_CONFRONTO = ("Callmewine", "Millesima", "Xtrawine")
+NOTE_NEGOZI = {
+    "Millesima": "Millesima: prezzo del sito francese (IVA inclusa per la consegna in Francia, può cambiare per l’Italia).",
+}
+
+
+def ann_norm(a):
+    a = (a or "").strip().upper()
+    return "" if a in ("", "NV", "S.A.") else a
+
+
+def carica_offerte_vini():
+    """{id vino (testo): [gruppo, ...]}, un gruppo per formato di Peck, con le offerte confrontabili (confrontabile = si)."""
+    gruppi = {}
+
+    def prendi(r, litri_peck, a_peck, p_peck, pl_peck):
+        if p_peck is None or not litri_peck:
+            return None
+        k = (r["id"], f"{litri_peck:g}")
+        g = gruppi.get(k)
+        if g is None:
+            g = gruppi[k] = {"id": r["id"], "litri": litri_peck, "a_peck": (a_peck or "").strip(), "p_peck": p_peck,
+                             "pl_peck": pl_peck or p_peck / litri_peck, "offerte": []}
+        return g
+
+    def aggiungi(g, o):
+        if o["pl"] is None or o["p"] is None:
+            return
+        dp = (g["pl_peck"] / o["pl"] - 1) * 100 if o["pl"] else o["dp"]
+        if dp is None:
+            return
+        o["dp"] = dp
+        g["offerte"].append(o)
+
+    f = DATI / "confronto" / "vini_tannico.csv"
+    if f.exists():
+        with open(f, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                if (r["confrontabile"] or "").strip().lower() != "si":
+                    continue
+                g = prendi(r, num_conf(r["litri_peck"]), r["annata_peck"], num_conf(r["prezzo_peck"]), num_conf(r["prezzo_peck_al_litro"]))
+                if g:
+                    aggiungi(g, {"fonte": "Tannico", "tipo": "t", "url": (r["url_tannico"] or "").strip(),
+                                 "a": (r["annata_tannico"] or "").strip(), "l": num_conf(r["litri_tannico"]),
+                                 "p": num_conf(r["prezzo_tannico"]), "pl": num_conf(r["prezzo_tannico_al_litro"]),
+                                 "dp": num_conf(r["differenza_pct"]),
+                                 "disp": (r["disponibile_tannico"] or "").strip().lower() == "si",
+                                 "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip()})
+    f = DATI / "confronto" / "vini_enoteche_prezzi.csv"
+    if f.exists():
+        with open(f, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                if r["retailer"] not in ENOTECHE_CONFRONTO or (r["confrontabile"] or "").strip().lower() != "si":
+                    continue
+                g = prendi(r, num_conf(r["litri_peck"]), r["annata_peck"], num_conf(r["prezzo_peck"]), num_conf(r["prezzo_peck_al_litro"]))
+                if g:
+                    aggiungi(g, {"fonte": r["retailer"], "tipo": "e", "url": (r["url"] or "").strip(),
+                                 "a": (r["annata_fonte"] or "").strip(), "l": num_conf(r["litri_fonte"]),
+                                 "p": num_conf(r["prezzo_fonte_eur_bottiglia"]), "pl": num_conf(r["prezzo_al_litro"]),
+                                 "dp": num_conf(r["differenza_pct"]),
+                                 "disp": (r["disponibile"] or "").strip().lower() == "si",
+                                 "data": (r["data_pagina"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip()})
+    out = defaultdict(list)
+    for g in gruppi.values():
+        if not g["offerte"]:
+            continue
+        for o in g["offerte"]:
+            o["stessa"] = ann_norm(o["a"]) == ann_norm(g["a_peck"])
+        g["offerte"].sort(key=lambda o: (not o["disp"], not o["stessa"], o["pl"]))
+        g["rif"] = riferimento(g, False)
+        g["rif_stock"] = riferimento(g, True)
+        out[g["id"]].append(g)
+    for lst in out.values():
+        lst.sort(key=lambda g: g["litri"])
+    return dict(out)
+
+
+def riferimento(g, solo_disponibili):
+    """L'offerta con cui si confronta Peck: fra quelle in vendita (se ce ne sono; con solo_disponibili solo quelle),
+    prima la stessa annata di Peck, poi il prezzo al litro piu' basso."""
+    pool = [o for o in g["offerte"] if o["disp"]]
+    if not pool and not solo_disponibili:
+        pool = list(g["offerte"])
+    if not pool:
+        return None
+    stessa = [o for o in pool if o["stessa"]]
+    return min(stessa or pool, key=lambda o: o["pl"])
+
+
+def classe_diff(dp):
+    """Colore della differenza: verde se Peck costa meno (oltre il 5%), neutro entro il ±5%, caldo se costa di piu'."""
+    if dp < -SOGLIA_OCCASIONE:
+        return "meno"
+    return "pari" if dp <= SOGLIA_OCCASIONE else "piu"
+
+
+def barra_diff(dp):
+    """Barra centrata sullo zero (scala ±100%): verde a sinistra se Peck costa meno, calda a destra se costa di piu'."""
+    larg = min(abs(dp), 100) / 2
+    pos = "dx" if dp > 0 else "sx"
+    return (f'<span class="barra-diff d-{classe_diff(dp)}" role="img" aria-label="{H(verdetto(dp) or "")}">'
+            f'<span class="riempi {pos}" style="width:{larg:.1f}%"></span></span>')
+
+
+def etichetta_annata_offerta(o, a_peck):
+    if o["stessa"]:
         return ""
-    dp = c["dp"]
-    segno = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
-    annata = ""
-    if c["a_peck"] and c["a_tan"] and c["a_peck"] != c["a_tan"]:
-        annata = (f'<p class="meta">Annata: da Peck {H(c["a_peck"])}, su Tannico {H(c["a_tan"])} '
-                  f'(vicine, ma non la stessa).</p>')
-    if c["disp"]:
-        disp = '<p class="conf-ingr"><span class="spunta-ok" aria-hidden="true">✓</span> Disponibile su Tannico</p>'
-    else:
-        disp = ('<p class="conf-ingr meta">Oggi non disponibile su Tannico: il prezzo è l’ultimo che abbiamo visto '
-                'sulla sua scheda.</p>')
-    link = ext(c["url"], "Vedi su Tannico", "bottone piccolo")
-    lato_peck = (f'<div class="lato"><p class="et">Da Peck</p><p class="cifra">{euro_it(c["p_peck"])} '
-                 f'<span class="meta">({litri_testo(c["l_peck"])})</span></p>'
-                 + (f'<p><span class="meta">{euro_it(c["pl_peck"])} al litro</span></p>' if c["pl_peck"] else "") + '</div>')
-    lato_tan = (f'<div class="lato"><p class="et">Su Tannico</p><p class="cifra">{euro_it(c["p_tan"])} '
-                f'<span class="meta">({litri_testo(c["l_tan"])})</span></p>'
-                + (f'<p><span class="meta">{euro_it(c["pl_tan"])} al litro</span></p>' if c["pl_tan"] else "") + '</div>')
+    return (f'<span class="chip-annata" title="Annata diversa da quella di Peck ({H(a_peck or "senza annata")})">'
+            f'annata {H(o["a"] or "?")}</span>')
+
+
+def confronto_vino(w, CV):
+    """Il riquadro «Prezzi altrove» nella pagina di un vino: tutte le offerte confrontabili (Tannico, Callmewine,
+    Millesima, Xtrawine), per formato di Peck."""
+    gruppi = CV.get(str(w["id"]))
+    if not gruppi:
+        return ""
+    blocchi = []
+    note_negozi = set()
+    for g in gruppi:
+        ref = g["rif"]
+        dp = ref["dp"]
+        stessa = ref["stessa"]
+        formato = f'<h3>Bottiglia da {litri_testo(g["litri"])}</h3>' if len(gruppi) > 1 or g["litri"] != 0.75 else ""
+        peck = (f'<div class="lato"><p class="et">Da Peck</p><p class="cifra">{euro_it(g["p_peck"])} '
+                f'<span class="meta">({litri_testo(g["litri"])})</span></p>'
+                f'<p><span class="meta">{euro_it(g["pl_peck"])} al litro</span></p></div>')
+        righe = ""
+        for o in g["offerte"]:
+            if o["fonte"] in NOTE_NEGOZI:
+                note_negozi.add(NOTE_NEGOZI[o["fonte"]])
+            nd = "" if o["disp"] else ' <span class="chip-nd">non disponibile</span>'
+            link = ext(o["url"], f"Vedi su {o['fonte']}", "bottone piccolo")
+            righe += (f'<li class="offerta{"" if o["disp"] else " nd"}"><div class="of-chi"><strong>{H(o["fonte"])}</strong> '
+                      f'{etichetta_annata_offerta(o, g["a_peck"])}{nd}</div>'
+                      f'<div class="of-prezzo">{euro_it(o["p"])} <span class="meta">({litri_testo(o["l"])}) · {euro_it(o["pl"])} al litro</span></div>'
+                      f'<div class="of-diff v-{classe_diff(o["dp"])}">{H(pct_segno(o["dp"]))}</div>'
+                      f'<div class="of-link">{link}</div></li>')
+        nome_rif = ref["fonte"] + ("" if stessa else f", annata {ref['a'] or '?'}")
+        avviso = ""
+        if not ref["disp"]:
+            avviso = ('<p class="conf-ingr meta">Oggi nessuno di questi negozi ha la bottiglia in vendita: i prezzi sono gli ultimi che '
+                      'abbiamo visto sulle loro schede.</p>')
+        annata = ("" if stessa else f'<p class="meta">Annata: da Peck {H(g["a_peck"] or "senza annata")}, da {H(ref["fonte"])} {H(ref["a"] or "?")} '
+                                   f'(vicine, ma non la stessa).</p>')
+        cl = "stesso" if stessa else "molto"
+        blocchi.append(
+            f'<div class="confronto s-{cl}">{formato}'
+            f'<p><span class="badge-sim s-{cl}">{"Stesso vino, stesso formato" if stessa else "Stesso vino, annata vicina"}</span></p>'
+            f'<div class="conf-prezzi">{peck}</div>'
+            f'<ul class="offerte">{righe}</ul>'
+            f'<p class="conf-verdetto v-{classe_diff(dp)}">{H(verdetto(dp))} <span class="meta">(al litro, rispetto a {H(nome_rif)})</span></p>'
+            f'{annata}{avviso}</div>')
+    data = max(o["data"] for g in gruppi for o in g["offerte"])
+    nomi = sorted({o["fonte"] for g in gruppi for o in g["offerte"]})
     return (f'<section class="sezione" id="prezzi-altrove"><h2>Prezzi altrove</h2>'
-            f'<div class="confronto s-stesso"><p><span class="badge-sim s-stesso">Stesso vino, stesso formato</span></p>'
-            f'<div class="conf-prezzi">{lato_peck}{lato_tan}</div>'
-            f'<p class="conf-verdetto v-{segno}">{H(verdetto(dp))} <span class="meta">(al litro)</span></p>'
-            f'{annata}{disp}<div class="gruppo-bottoni">{link}</div>'
-            f'<p class="meta">Prezzi visti il {data_lunga(c["data"])}, entrambi con IVA; cambiano. Tannico è un negozio online di vino: '
-            f'non è affiliato a questo sito. Il confronto vale solo quando il vino, il formato e l’annata (al massimo 2 anni di scarto) '
-            f'sono gli stessi.</p></div></section>')
+            + "".join(blocchi)
+            + f'<p class="meta">Prezzi visti il {data_lunga(data)}, con IVA, divisi per i litri; cambiano. '
+              f'{H(", ".join(nomi))}: negozi online di vino, non affiliati a questo sito. Il confronto vale solo quando il vino e il formato '
+              f'sono gli stessi e l’annata dista al massimo 2 anni; per ogni bottiglia ci si confronta con l’offerta più bassa '
+              f'(a parità di annata, se c’è) fra i negozi che la vendono. {H(" ".join(sorted(note_negozi)))} '
+              f'Altri dettagli in «<a href="../../come-funziona/#confronto-prezzi">Come funziona</a>».</p></section>')
+
+
+# --- alternative da un altro produttore (data/confronto/alternative_7.csv) -------------------------------
+
+def carica_alternative(dispensa):
+    """Stessa ricetta venduta da un ALTRO produttore (non quello di Peck). Mai «stesso prodotto», mai nelle occasioni."""
+    f = DATI / "confronto" / "alternative_7.csv"
+    if not f.exists():
+        return []
+    per_cod = {}
+    if (DATI / "delivery_dispensa.csv").exists():
+        per_cod = {r["cod_art"]: r["chiave_dispensa"] for r in leggi_csv("delivery_dispensa")}
+    per_id = {d["id"]: d for d in dispensa}
+    per_nome = {nz(d["nome_originale"]): d for d in dispensa}
+    out = []
+    with open(f, encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            if (r.get("stesso_produttore") or "").strip().lower() != "no":
+                continue
+            a = {
+                "nome_peck": (r["nome_peck"] or "").strip(), "p_peck": num_conf(r["prezzo_peck"]), "f_peck": (r["formato_peck"] or "").strip(),
+                "kg_peck": num_conf(r["prezzo_peck_al_kg"]), "azienda": (r["azienda_alternativa"] or "").strip(),
+                "nome_alt": (r["nome_alternativa"] or "").strip(), "url": (r["url_alternativa"] or "").strip(),
+                "p_alt": num_conf(r["prezzo_alternativa"]), "f_alt": (r["formato_alternativa"] or "").strip(),
+                "kg_alt": num_conf(r["prezzo_alternativa_al_kg"]), "dp": num_conf(r["differenza_pct"]),
+                "ricetta": (r["ricetta"] or "").strip().lower(), "prod_peck": (r["produttore_peck"] or "").strip(),
+                "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip(),
+                "cod": (r["cod_art_delivery"] or "").strip(),
+            }
+            if a["dp"] is None and a["kg_peck"] and a["kg_alt"]:
+                a["dp"] = (a["kg_peck"] / a["kg_alt"] - 1) * 100
+            if a["dp"] is None or a["p_peck"] is None or a["p_alt"] is None:
+                continue
+            a["item"] = per_id.get(per_cod.get(a["cod"], "")) or per_nome.get(nz(a["nome_peck"]))
+            if a["item"]:
+                a["item"].setdefault("alternative", []).append(a)
+            out.append(a)
+    return out
+
+
+RICETTA_TESTO = {"identica": "Ricetta identica", "molto simile": "Ricetta molto simile", "simile": "Ricetta simile"}
+
+
+def base_alt(a):
+    return "al kg o al litro" if unita_di(a["f_peck"]) != unita_di(a["f_alt"]) else f"al {unita_di(a['f_peck'])}"
+
+
+def blocco_alternative(it):
+    alt = it.get("alternative") or []
+    if not alt:
+        return ""
+    schede = []
+    for a in alt:
+        peck_chi = f' ({H(a["prod_peck"])})' if a["prod_peck"] else ""
+        schede.append(
+            f'<div class="confronto s-simile alternativa"><p><span class="badge-sim s-simile">Un altro produttore</span> '
+            f'<span class="badge-sim s-mano">{H(RICETTA_TESTO.get(a["ricetta"], "Ricetta " + a["ricetta"]))}</span></p>'
+            f'<h3>{H(a["nome_alt"])}</h3><p class="meta">{H(a["azienda"])}</p>'
+            f'<p class="conf-spiega">Non è chi lo fa per Peck{peck_chi}: è un’altra azienda che vende una ricetta simile con il proprio nome. '
+            f'Non è lo stesso prodotto.</p>'
+            f'<div class="conf-prezzi"><div class="lato"><p class="et">Da Peck</p><p class="cifra">{prezzo_formato(a["p_peck"], a["f_peck"])}</p><p>{al_kg_testo(a["kg_peck"], a["f_peck"])}</p></div>'
+            f'<div class="lato"><p class="et">Dall’altro produttore</p><p class="cifra">{prezzo_formato(a["p_alt"], a["f_alt"])}</p><p>{al_kg_testo(a["kg_alt"], a["f_alt"])}</p></div></div>'
+            f'<p class="conf-verdetto v-{classe_diff(a["dp"])}">{H(verdetto(a["dp"]))} <span class="meta">({base_alt(a)})</span></p>'
+            f'<div class="gruppo-bottoni">{ext(a["url"], "Vedi sul sito", "bottone piccolo")}</div>'
+            f'<p class="meta">Prezzo visto il {data_lunga(a["data"])}.</p>'
+            + (f'<details><summary>Note del confronto</summary><p>{H(a["nota"])}</p></details>' if a["nota"] else "")
+            + '</div>')
+    return ('<section class="sezione" id="alternativa"><h2>Un’alternativa da un altro produttore</h2>'
+            '<p class="meta">Qui non si parla di chi fa il prodotto per Peck, ma di un’altra azienda che vende qualcosa di simile: '
+            'serve solo come riferimento di prezzo e non entra nell’Angolo delle occasioni.</p>' + "".join(schede) + "</section>")
+
+
+# --- tutti i confronti in un'unica lista (per /occasioni/ e /prezzi/) --------------------------------------
+
+SRC_PRODUTTORE, SRC_TANNICO, SRC_ENOTECHE, SRC_ALTRO = 1, 2, 4, 8
+GRUPPI_VINO = [
+    ("v-rosso-italia", "Vino rosso · Italia"), ("v-rosso-francia", "Vino rosso · Francia"),
+    ("v-rosso-altri", "Vino rosso · altri paesi"), ("v-bianco-italia", "Vino bianco · Italia"),
+    ("v-bianco-francia", "Vino bianco · Francia"), ("v-bianco-altri", "Vino bianco · altri paesi"),
+    ("v-spumante-francia", "Spumanti e Champagne · Francia"), ("v-spumante-italia", "Spumanti · Italia"),
+    ("v-spumante-altri", "Spumanti · altri paesi"), ("v-altri", "Rosati, dolci e liquorosi"),
+]
+
+
+def gruppo_vino(w):
+    t, p = w["tipo"], w["paese"]
+    sfx = {"Italia": "italia", "Francia": "francia"}.get(p, "altri")
+    if t in ("rosso", "bianco", "spumante"):
+        return f"v-{t}-{sfx}"
+    return "v-altri"
+
+
+def mediana(v):
+    v = sorted(v)
+    if not v:
+        return None
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+_FOTO_LOCALE = None
+
+
+def foto_delivery_per_nome(nome):
+    """URL pubblico della foto di un prodotto del delivery che non e' nella Dispensa (per le righe di «Prezzi confrontati»).
+    Serve il catalogo salvato in data/locale/ (resta sul computer: l'URL e' pubblico, il catalogo no); senza, niente foto."""
+    global _FOTO_LOCALE
+    if _FOTO_LOCALE is None:
+        _FOTO_LOCALE = {}
+        for f in sorted((DATI / "locale").glob("delivery_catalogo_*.json")):
+            try:
+                for x in json.loads(f.read_text(encoding="utf-8"))["prodotti"]:
+                    if x.get("img_web", "").startswith("WEB_"):
+                        _FOTO_LOCALE[nz(x["des_art"])] = "https://delivery.peck.it/files/img_web/" + x["img_web"]
+            except (OSError, ValueError, KeyError):
+                pass
+    return _FOTO_LOCALE.get(nz(nome), "")
+
+
+def costruisci_righe_prezzi(righe_conf, alternative, V, CV):
+    """Tutti i confronti, cibo e vini, in un'unica lista di dict (le righe «non trovato» e senza due prezzi non ci sono)."""
+    righe = []
+    for c in righe_conf:
+        if not c["confrontabile"] or c["sim"] not in SIM_PESO or SIM_PESO[c["sim"]] < 1:
+            continue
+        it = c["item"]
+        nome = it["nome"] if it else bello(c["nome_peck"])
+        righe.append({
+            "tipo": "c", "nome": nome, "item": it, "gruppo": it["categoria"] if it else categoria_di(c["nome_peck"].lower()),
+            "sim": SIM_PESO[c["sim"]], "sim_testo": SIM_BREVE[c["sim"]], "dp": c["dp"], "base": c["base"], "data": c["data"],
+            "p_peck": c["p_peck"], "f_peck": c["f_peck"], "kg_peck": c["kg_peck"],
+            "fuori": [{"fonte": c["azienda"] or c["nome_prod"], "nome": c["nome_prod"], "url": c["url"], "p": c["p_prod"],
+                       "f": c["f_prod"], "kg": c["kg_prod"], "dp": c["dp"]}],
+            "src": SRC_PRODUTTORE, "occ": SIM_PESO[c["sim"]] >= 2, "solo_delivery": not it, "nd": False,
+            "azienda": c["azienda"], "foto": "" if it else foto_delivery_per_nome(c["nome_peck"]),
+        })
+    for a in alternative:
+        it = a["item"]
+        righe.append({
+            "tipo": "c", "nome": it["nome"] if it else bello(a["nome_peck"]), "item": it,
+            "gruppo": it["categoria"] if it else categoria_di(a["nome_peck"].lower()),
+            "sim": 0, "sim_testo": "Altro produttore · " + RICETTA_TESTO.get(a["ricetta"], a["ricetta"]).lower(),
+            "dp": a["dp"], "base": base_alt(a), "data": a["data"],
+            "p_peck": a["p_peck"], "f_peck": a["f_peck"], "kg_peck": a["kg_peck"],
+            "fuori": [{"fonte": a["azienda"], "nome": a["nome_alt"], "url": a["url"], "p": a["p_alt"], "f": a["f_alt"],
+                       "kg": a["kg_alt"], "dp": a["dp"]}],
+            "src": SRC_ALTRO, "occ": False, "solo_delivery": not it, "nd": False, "azienda": a["azienda"],
+            "foto": "" if it else foto_delivery_per_nome(a["nome_peck"]),
+        })
+    per_id = {str(w["id"]): w for w in V["vini"]}
+    for vid, gruppi in CV.items():
+        w = per_id.get(vid)
+        if not w:
+            continue
+        for g in gruppi:
+            ref = g["rif"]
+            src = 0
+            for o in g["offerte"]:
+                src |= SRC_TANNICO if o["tipo"] == "t" else SRC_ENOTECHE
+            stock = g["rif_stock"]
+            righe.append({
+                "tipo": "v", "nome": nome_nome(w), "w": w, "gruppo": gruppo_vino(w), "sim": 3 if ref["stessa"] else 2,
+                "sim_testo": "Stesso vino, stessa annata" if ref["stessa"] else f"Stesso vino, annata {ref['a'] or '?'}",
+                "dp": ref["dp"], "base": "al litro", "data": max(o["data"] for o in g["offerte"]),
+                "g": g, "ref": ref, "src": src, "occ": stock is not None and stock["dp"] <= SOGLIA_OCCASIONE,
+                "nd": stock is None, "solo_delivery": False,
+            })
+    return righe
+
+
+def riepilogo_prezzi(righe):
+    cibo = [r["dp"] for r in righe if r["tipo"] == "c" and r["sim"] >= 1]
+    cibo_ok = [r["dp"] for r in righe if r["tipo"] == "c" and r["sim"] >= 2]
+    vini = [r["dp"] for r in righe if r["tipo"] == "v"]
+    vini_st = [r["dp"] for r in righe if r["tipo"] == "v" and not r["nd"]]
+    alt = sum(1 for r in righe if r["tipo"] == "c" and r["sim"] == 0)
+    return {"n": len(righe), "n_cibo": len(cibo) + alt, "n_vini": len(vini), "n_alt": alt, "n_cibo_pr": len(cibo),
+            "med_cibo": mediana(cibo), "med_cibo_ok": mediana(cibo_ok), "n_cibo_ok": len(cibo_ok),
+            "med_vini": mediana(vini), "med_vini_st": mediana(vini_st), "n_vini_st": len(vini_st),
+            "meno_cibo": sum(1 for d in cibo if d <= SOGLIA_OCCASIONE), "meno_vini": sum(1 for d in vini if d <= SOGLIA_OCCASIONE)}
+
+
+def pct_segno(dp):
+    if dp is None:
+        return "n.d."
+    return "≈ 0%" if abs(dp) < 0.5 else f"{'+' if dp > 0 else '−'}{percento_testo(dp)}%"
 
 
 # --- Angolo delle occasioni ------------------------------------------------
 
-def voci_confronto(righe, V, CV, r):
-    """Tutti i confronti che hanno due prezzi veri, cibo e vini insieme (solo vini con Tannico disponibile)."""
+def voci_confronto(righe, r):
+    """I confronti dell'Angolo: cibo «stesso prodotto» o «molto simile» con due prezzi veri; vini solo se almeno un negozio
+    ha la bottiglia in vendita (prima la stessa annata, poi la piu' bassa). Le alternative di altri produttori non ci sono mai."""
     voci = []
     for c in righe:
-        if SIM_PESO[c["sim"]] < 2 or not c["confrontabile"]:
-            continue
-        it = c["item"]
-        if it:
-            foto, href = immagine_cibo(it, r), f"prodotto/{it['id']}/"
-            nome = it["nome"]
+        if c["tipo"] == "c":
+            if c["sim"] < 2:
+                continue
+            it = c["item"]
+            if it:
+                foto, href = immagine_cibo(it, r), f"prodotto/{it['id']}/"
+            else:
+                foto, href = foto_html(c.get("foto", ""), c["nome"]), ""
+            f = c["fuori"][0]
+            voci.append({
+                "tipo": "Cibo", "nome": c["nome"], "foto": foto, "href": href, "dp": c["dp"], "sim": c["sim_testo"],
+                "peck": prezzo_formato(c["p_peck"], c["f_peck"]), "peck_u": al_kg_testo(c["kg_peck"], c["f_peck"]),
+                "fuori": prezzo_formato(f["p"], f["f"]), "fuori_u": al_kg_testo(f["kg"], f["f"]),
+                "et_fuori": "Dal produttore", "dove": c["azienda"] or f["nome"], "base": c["base"], "data": c["data"], "altri": "",
+            })
         else:
-            foto, href, nome = foto_html("", bello(c["nome_peck"])), "", bello(c["nome_peck"])
-        voci.append({
-            "tipo": "Cibo", "nome": nome, "foto": foto, "href": href, "dp": c["dp"], "sim": SIM_BREVE[c["sim"]],
-            "peck": prezzo_formato(c["p_peck"], c["f_peck"]),
-            "peck_u": al_kg_testo(c["kg_peck"], c["f_peck"]),
-            "fuori": prezzo_formato(c["p_prod"], c["f_prod"]),
-            "fuori_u": al_kg_testo(c["kg_prod"], c["f_prod"]),
-            "et_fuori": "Dal produttore", "dove": c["azienda"] or c["nome_prod"], "base": c["base"], "data": c["data"],
-        })
-    per_id = {str(w["id"]): w for w in V["vini"]}
-    for vid, c in CV.items():
-        w = per_id.get(vid)
-        if not w or not c["disp"]:
-            continue
-        voci.append({
-            "tipo": "Vino", "nome": nome_nome(w), "foto": foto_html(url_foto_vino(w), "Bottiglia: " + nome_nome(w), "vino"),
-            "href": f"vino/{w['d']}/", "dp": c["dp"], "sim": "Stesso vino, stesso formato",
-            "peck": f'{euro_it(c["p_peck"])} <span class="meta">({litri_testo(c["l_peck"])})</span>',
-            "peck_u": f'<span class="meta">{euro_it(c["pl_peck"])} al litro</span>' if c["pl_peck"] else "",
-            "fuori": f'{euro_it(c["p_tan"])} <span class="meta">({litri_testo(c["l_tan"])})</span>',
-            "fuori_u": f'<span class="meta">{euro_it(c["pl_tan"])} al litro</span>' if c["pl_tan"] else "",
-            "et_fuori": "Su Tannico", "dove": "Tannico", "base": "al litro", "data": c["data"],
-        })
+            g, w = c["g"], c["w"]
+            ref = g["rif_stock"]
+            if ref is None:
+                continue
+            altri = [o for o in g["offerte"] if o is not ref and o["disp"]]
+            testo_altri = ""
+            if altri:
+                testo_altri = ('<p class="meta">Anche: ' + "; ".join(
+                    f'{H(o["fonte"])} {euro_it(o["p"])}' + ("" if o["stessa"] else f' (annata {H(o["a"] or "?")})') for o in altri) + "</p>")
+            ann = "" if ref["stessa"] else f' <span class="meta">(annata {H(ref["a"] or "?")}; Peck: {H(g["a_peck"] or "senza annata")})</span>'
+            voci.append({
+                "tipo": "Vino", "nome": nome_nome(w), "foto": foto_html(url_foto_vino(w), "Bottiglia: " + nome_nome(w), "vino"),
+                "href": f"vino/{w['d']}/", "dp": ref["dp"],
+                "sim": "Stesso vino, stessa annata" if ref["stessa"] else f"Stesso vino, annata {ref['a'] or '?'}",
+                "peck": f'{euro_it(g["p_peck"])} <span class="meta">({litri_testo(g["litri"])})</span>',
+                "peck_u": f'<span class="meta">{euro_it(g["pl_peck"])} al litro</span>',
+                "fuori": f'{euro_it(ref["p"])} <span class="meta">({litri_testo(ref["l"])})</span>{ann}',
+                "fuori_u": f'<span class="meta">{euro_it(ref["pl"])} al litro</span>',
+                "et_fuori": f'Su {ref["fonte"]}', "dove": ref["fonte"], "base": "al litro", "data": ref["data"], "altri": testo_altri,
+            })
     return voci
 
 
 def riga_occasione(v, r):
     dp = v["dp"]
-    segno = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
-    if abs(dp) < 0.5:
-        cifra, frase = "≈ 0%", "Da Peck costa praticamente lo stesso"
-    else:
-        cifra = f"{'+' if dp > 0 else '−'}{percento_testo(dp)}%"
-        frase = verdetto(dp)
+    segno = classe_diff(dp)
+    cifra = pct_segno(dp)
+    frase = "Da Peck costa praticamente lo stesso" if abs(dp) < 0.5 else verdetto(dp)
     nome = (f'<a href="{r}{v["href"]}">{H(v["nome"])}</a>' if v["href"] else H(v["nome"]))
-    foto = v["foto"]
     base = f' <span class="meta">({H(v["base"])})</span>' if v["base"] else ""
     pagina = (f'<a class="vai-pagina" href="{r}{v["href"]}">Vai alla pagina<span class="sr"> di {H(v["nome"])}</span></a>'
               if v["href"] else "")
-    return (f'<li class="occ">{foto}'
+    return (f'<li class="occ">{v["foto"]}'
             f'<div class="occ-nome"><p class="cat">{H(v["tipo"])} · {H(v["sim"])}</p><p class="nome">{nome}</p><p class="meta">Confrontato con: {H(v["dove"])}</p>{pagina}</div>'
             f'<div class="occ-prezzi"><div class="lato"><p class="et">Da Peck</p><p class="cifra">{v["peck"]}</p><p>{v["peck_u"]}</p></div>'
-            f'<div class="lato"><p class="et">{H(v["et_fuori"])}</p><p class="cifra">{v["fuori"]}</p><p>{v["fuori_u"]}</p></div></div>'
-            f'<div class="occ-diff v-{segno}"><p class="grande">{H(cifra)}</p><p class="meta">{H(frase)}{base}</p></div></li>')
+            f'<div class="lato"><p class="et">{H(v["et_fuori"])}</p><p class="cifra">{v["fuori"]}</p><p>{v["fuori_u"]}</p>{v["altri"]}</div></div>'
+            f'<div class="occ-diff v-{segno}"><p class="grande">{H(cifra)}</p>{barra_diff(dp)}<p class="meta">{H(frase)}{base}</p></div></li>')
 
 
 def pagina_occasioni(voci, r):
@@ -2616,7 +3051,7 @@ def pagina_occasioni(voci, r):
         elenco = '<p class="vuoto">Per ora nessun prodotto passa la soglia.</p>'
     corpo = f"""<section>
 <h1 class="titolo-pagina">Angolo delle occasioni</h1>
-<p class="intro">I prodotti che da Peck costano <strong>meno</strong> che altrove, o al massimo il <strong>{soglia}% in più</strong>, a parità di peso o di litri. Dentro ci sono solo i confronti sicuri: per il cibo lo stesso prodotto (o uno molto simile) sul sito di chi lo fa, per il vino la stessa bottiglia, dello stesso formato, su Tannico quando è disponibile. Sono {conta_testo(len(occasioni), "prodotto", "prodotti")} ({n_cibo} di cibo, {n_vino} di vino), dal più conveniente.</p>
+<p class="intro">I prodotti che da Peck costano <strong>meno</strong> che altrove, o al massimo il <strong>{soglia}% in più</strong>, a parità di peso o di litri. Dentro ci sono solo i confronti sicuri: per il cibo lo stesso prodotto (o uno molto simile) sul sito di chi lo fa, per il vino la stessa bottiglia, dello stesso formato, in uno dei negozi che la vendono oggi (Tannico, Callmewine, Millesima, Xtrawine; prima la stessa annata, poi un’annata vicina, che in quel caso è scritta). Sono {conta_testo(len(occasioni), "prodotto", "prodotti")} ({n_cibo} di cibo, {n_vino} di vino), dal più conveniente. Vuoi vedere <em>tutti</em> i confronti, anche dove Peck costa di più? Sono in <a href="{r}prezzi/">Prezzi confrontati</a>.</p>
 <p class="meta nota-ord">Confronto del {data_lunga(oggi_dati)}. I prezzi degli altri negozi si aggiornano in automatico una volta a settimana; i prezzi di Peck (servizio delivery e carta dell’enoteca) solo a mano, quindi possono essere più vecchi. La soglia (+{soglia}%) è una nostra scelta, non un giudizio su Peck: prezzi e formati cambiano, controlla sempre sulla pagina del negozio. Come si confronta: «<a href="{r}come-funziona/#confronto-prezzi">Come funziona</a>».</p>
 {elenco}
 <details class="costa-di-piu" id="costa-di-piu"><summary>Dove Peck costa di più ({len(costano_di_piu)} scarti maggiori)</summary>
@@ -2624,15 +3059,382 @@ def pagina_occasioni(voci, r):
 <ul class="occasioni">{"".join(riga_occasione(v, r) for v in costano_di_piu)}</ul>
 </details>
 </section>""", (f"Prodotti che da Peck costano meno che altrove, o al massimo il {soglia}% in più: cibo confrontato con il sito del produttore, "
-                 f"vino con Tannico. {AVVISO}")
+                 f"vino con Tannico e le enoteche online. {AVVISO}")
     return corpo
+
+
+# ---------------------------------------------------------------------------
+# Storico: le frasi di origine di Peck in date passate (data/storico.csv, scritto da src/storico.py)
+# ---------------------------------------------------------------------------
+
+def carica_storico(dispensa, az, st):
+    """Raggruppa le righe di storico.csv per (data, prodotto), le abbina alle aziende e ai prodotti della Dispensa di oggi.
+    Aggiunge `storico` ai prodotti e `osservazioni` alle aziende."""
+    if not (DATI / "storico.csv").exists():
+        return []
+    aziende, riga_a = st["_aziende"], st["_riga_a_azienda"]
+    per_nome = {nz(d["nome_originale"]): d for d in dispensa}
+    gruppi = {}
+    for r in leggi_csv("storico"):
+        k = (r["data_fonte"], r["nome_prodotto"])
+        g = gruppi.get(k)
+        if g is None:
+            g = gruppi[k] = {
+                "data": r["data_fonte"], "fonte": r["fonte"], "nome": bello(r["nome_prodotto"]),
+                "confronto": r["confronto_2026"], "righe": [], "items": [], "aziende": [],
+                "nomi_2026": [n.strip() for n in (r["nome_elemento_2026"] or "").split(" | ") if n.strip()],
+                "nota_conf": r["nota_confronto"],
+            }
+        aid = ""
+        if r["sede_peck"] == "si":
+            aid = "peck"
+        elif r["indirizzo"] or r["comune"] or r["bollo_ce"] or r["produttore_nominato"]:
+            a, _ = aziende.cerca(r)
+            if a:
+                aid = riga_a.get((a["tipo_chiave"], nz(a["chiave"])), "")
+        dove = (", ".join(x for x in (r["indirizzo"], r["cap"], luogo(r["comune"], r["provincia"])) if x)
+                or r["bollo_ce"] or r["produttore_nominato"])
+        g["righe"].append({"frase": r["frase_origine"], "luogo": dove, "aid": aid if aid in az else "", "nota": r["nota"]})
+    for g in gruppi.values():
+        for n in g["nomi_2026"]:
+            it = per_nome.get(nz(n))
+            if it and it not in g["items"]:
+                g["items"].append(it)
+                it.setdefault("storico", []).append(g)
+        for ri in g["righe"]:
+            if ri["aid"] and ri["aid"] not in g["aziende"]:
+                g["aziende"].append(ri["aid"])
+                az[ri["aid"]]["osservazioni"].append(g)
+    return sorted(gruppi.values(), key=lambda g: (g["data"], g["nome"]))
+
+
+def nome_azienda_link(aid, az, r):
+    z = az.get(aid)
+    if not z or not (z["trovata"] or aid == "peck"):
+        return ""
+    return f'<a href="{r}produttore/{z["id"]}/">{H(z["nome"])}</a>'
+
+
+def oggi_di(it, az, r):
+    """[html] di chi fa oggi (24 ottobre 2026) il prodotto: azienda e luogo, uno per origine diversa."""
+    out, visti = [], set()
+    for o in it["origini"]:
+        if o["stato"] == "nessuna" or not o["azienda"]:
+            continue
+        z = az.get(o["azienda"])
+        dove = luogo(o["comune"] or o.get("comune_azienda") or (z and z["comune"]) or "",
+                     o["provincia"] or (z and z["provincia"]) or "")
+        if o["stato"] == "peck":
+            testo = "Peck stessa, in via Spadari 9, Milano"
+        else:
+            nome = nome_azienda_link(o["azienda"], az, r) or "azienda non trovata"
+            testo = nome + (f", {H(dove)}" if dove else (f" ({H(o['bollo'])})" if o["bollo"] else ""))
+        if testo not in visti:
+            visti.add(testo)
+            out.append(testo)
+    return out
+
+
+def riga_2025(ri, az, r):
+    nome = nome_azienda_link(ri["aid"], az, r)
+    if ri["luogo"] and nome:
+        testo = f"{H(ri['luogo'])} — {nome}"
+    elif ri["luogo"]:
+        testo = H(ri["luogo"])
+    else:
+        testo = "<em>nessun luogo di produzione sull’etichetta</em>"
+    if ri["aid"] == "peck" and ri["luogo"]:
+        testo = f"{H(ri['luogo'])} — Peck stessa"
+    frase = f'<blockquote class="frase">«{H(ri["frase"])}»</blockquote>' if ri["frase"] else ""
+    return f'<div class="st-riga"><p>{testo}</p>{frase}</div>'
+
+
+def blocco_storia(it, az, r):
+    """«Storia del fornitore» nella pagina di un prodotto: l'etichetta di date passate contro lo shop di oggi."""
+    storico = it.get("storico") or []
+    if not storico:
+        return ""
+    blocchi = []
+    for g in sorted(storico, key=lambda g: g["data"]):
+        cambiato = g["confronto"] == "diverso"
+        oggi = oggi_di(it, az, r)
+        oggi_html = "".join(f"<p>{x}</p>" for x in oggi) if oggi else (
+            "<p><em>nella scheda di oggi Peck non scrive più dove è fatto</em></p>" if cambiato
+            else "<p><em>nessun luogo di produzione indicato</em></p>")
+        testa = ('<p class="st-esito st-cambio">Il fornitore è cambiato</p>' if cambiato
+                 else '<p class="st-esito st-uguale">Nessun cambiamento: stesso luogo di produzione</p>')
+        nota = (f'<details><summary>Come abbiamo confrontato</summary><p>{H(g["nota_conf"])}</p></details>'
+                if g["nota_conf"] else "")
+        blocchi.append(
+            f'<div class="storia{" cambiato" if cambiato else ""}">{testa}<ol class="linea">'
+            f'<li><span class="data">{H(data_lunga(g["data"]))}</span><div>{"".join(riga_2025(ri, az, r) for ri in g["righe"])}'
+            f'<p class="meta">{H(cap(g["fonte"]))}.</p></div></li>'
+            f'<li class="oggi"><span class="data">{H(DATA_FOTOGRAFIA_LUNGA)}</span><div>{oggi_html}'
+            f'<p class="meta">Shop online di Peck, il giorno della fotografia dei dati.</p></div></li></ol>{nota}</div>')
+    return ('<section class="sezione" id="storia"><h2>Storia del fornitore</h2>'
+            '<p class="meta">Che cosa diceva l’etichetta in date diverse, messa accanto a quello che dice oggi lo shop. '
+            'Le date sono quelle in cui abbiamo visto la pagina: fra una e l’altra il fornitore può essere cambiato più volte. '
+            'Dettagli in «<a href="' + r + 'come-funziona/#fotografie-datate">Come funziona</a>».</p>'
+            + "".join(blocchi) + "</section>")
+
+
+def blocco_osservazioni(z, az, r):
+    """Le osservazioni datate di un'azienda, nella sua pagina."""
+    oss = sorted(z.get("osservazioni") or [], key=lambda g: (g["data"], g["nome"]))
+    if not oss:
+        return ""
+    voci = ""
+    for g in oss:
+        it = g["items"][0] if g["items"] else None
+        prodotto = (f'<a href="{r}prodotto/{it["id"]}/">{H(g["nome"])}</a>' if it else H(g["nome"]))
+        righe = [ri for ri in g["righe"] if ri["aid"] == z["id"]]
+        dove = "; ".join(dict.fromkeys(ri["luogo"] for ri in righe if ri["luogo"])) or "luogo non indicato"
+        frasi = "".join(f'<blockquote class="frase">«{H(ri["frase"])}»</blockquote>' for ri in righe if ri["frase"])
+        if g["confronto"] == "non in vendita online nel 2026":
+            esito = '<span class="st-badge st-cambio">non più nello shop online nel 2026</span>'
+        elif g["confronto"] == "diverso":
+            oggi = oggi_di(it, az, r) if it else []
+            esito = ('<span class="st-badge st-cambio">oggi non è più così</span>'
+                     + (f' <span class="meta">(oggi: {"; ".join(oggi)})</span>' if oggi else ""))
+        else:
+            esito = '<span class="st-badge st-uguale">stesso luogo anche nel 2026</span>'
+        voci += (f'<li><p><strong>{H(data_lunga(g["data"]))}</strong> · {prodotto}<br>'
+                 f'<span class="meta">{H(dove)}</span> {esito}</p>{frasi}</li>')
+    return (f'<section class="sezione" id="osservazioni"><h2>Osservazioni datate ({len(oss)})</h2>'
+            f'<p class="meta">Che cosa diceva l’etichetta dei prodotti collegati a questa azienda nelle fotografie salvate '
+            f'in date diverse (<a href="{r}come-funziona/#fotografie-datate">come funziona</a>).</p><ul class="osservazioni">{voci}</ul></section>')
+
+
+def sezione_fotografie_datate(storico, az):
+    if not storico:
+        return ""
+    date = sorted({g["data"] for g in storico})
+    n_prod = len(storico)
+    cambiati = [g for g in storico if g["confronto"] == "diverso"]
+    spariti = [g for g in storico if g["confronto"] == "non in vendita online nel 2026"]
+    uguali = n_prod - len(cambiati) - len(spariti)
+    fonti = "; ".join(f"{data_lunga(d)}: {next(g['fonte'] for g in storico if g['data'] == d)}" for d in date)
+    li_cambiati = "".join(f"<li>{H(g['nome'])}</li>" for g in cambiati)
+    li_spariti = "".join(
+        f"<li>{H(g['nome'])}" + (" (" + ", ".join(az[a]["nome"] for a in g["aziende"] if a in az) + ")" if g["aziende"] else "") + "</li>"
+        for g in spariti)
+    return f"""<h2 id="fotografie-datate">Fotografie datate</h2>
+<p>Lo shop di Peck cambia: i fornitori dei prodotti anche. Oltre alla fotografia di oggi ({H(DATA_FOTOGRAFIA_LUNGA)}) teniamo qualche <em>fotografia di una data passata</em>: una pagina dello shop salvata a mano dal proprietario del progetto in quel giorno ({H(fonti)}). Di ogni prodotto si legge solo la frase breve sull’origine, come per oggi (programma <code>src/storico.py</code>, tabella <code>data/storico.csv</code>, file in <code>data/storico_fonti/</code>: per aggiungere una data basta aggiungere un file e rilanciarlo).</p>
+<ul>
+<li><strong>Come si confronta.</strong> Il luogo di produzione di allora (via e comune, o il codice del bollo CE) si mette accanto a quello di oggi: «uguale» se è lo stesso, «diverso» se è cambiato o se oggi la scheda non dice più nulla, «non in vendita online nel 2026» se il prodotto non c’è più nello shop (o c’è in un altro formato). Sono {n_prod} prodotti: {uguali} uguali, {len(cambiati)} diversi, {len(spariti)} non più in vendita online.</li>
+<li><strong>Dove si vede.</strong> Nella pagina di un prodotto, «Storia del fornitore» mostra le date una dopo l’altra e segnala quando il fornitore è cambiato. Nella pagina di un’azienda, «Osservazioni datate» elenca i prodotti che aveva in quelle date, anche se oggi non sono più nello shop: per questo ci sono pagine di aziende che oggi non fanno niente per lo shop online.</li>
+<li><strong>Limiti.</strong> Una fotografia è un giorno solo: quello che c’era fra una data e l’altra non lo sappiamo. Se oggi una frase non c’è più non vuol dire che il prodotto sia cambiato, solo che Peck non la scrive più.</li>
+</ul>
+{("<p>Prodotti il cui fornitore è cambiato dopo la prima fotografia:</p><ul>" + li_cambiati + "</ul>") if cambiati else ""}
+{("<p>Prodotti della prima fotografia che oggi non sono più (o non sono più così) nello shop online:</p><ul>" + li_spariti + "</ul>") if spariti else ""}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Valore spacchettato delle pagine dello shop (data/confronto/box_valore.csv e box_valore_righe.csv, da src/box_valore.py)
+# ---------------------------------------------------------------------------
+
+FONTE_PREZZO_BOX = {
+    "delivery": "dal servizio delivery di Peck", "produttore": "dal sito del produttore",
+    "scheda singola Peck": "dalla scheda singola dello shop di Peck", "enoteca Peck": "dalla carta dell’enoteca di Peck",
+}
+
+
+def carica_box_valore(box):
+    f = DATI / "confronto" / "box_valore.csv"
+    if not f.exists():
+        return {}
+    per_url = {b["url"]: b for b in box}
+    out = {}
+    with open(f, encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            b = per_url.get((r["url"] or "").strip())
+            if b:
+                out[b["id"]] = {"r": r, "righe": []}
+    f = DATI / "confronto" / "box_valore_righe.csv"
+    if f.exists():
+        with open(f, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                b = per_url.get((r["url_box"] or "").strip())
+                if b and b["id"] in out:
+                    out[b["id"]]["righe"].append(r)
+    return out
+
+
+def blocco_valore(b, bv, items, r):
+    """«Valore spacchettato»: la somma dei prezzi dei singoli prodotti contro il prezzo della pagina, con la copertura."""
+    if not bv:
+        return ""
+    x = bv["r"]
+    n_prezzati = int(num_conf(x["n_prezzati"]) or 0)
+    if b["tipo"] != "box" and n_prezzati == 0:
+        return ""
+    n_el = int(num_conf(x["n_elementi"]) or len(bv["righe"]))
+    cop = num_conf(x["copertura_pct"]) or 0
+    giudizio = (x.get("copertura_giudizio") or "").strip().lower() or ("buona" if cop >= 80 else "media" if cop >= 50 else "bassa")
+    prezzo_box = num_conf(x["prezzo_box"])
+    somma = num_conf(x.get("somma_totale")) if x.get("somma_totale") else None
+    if somma is None:
+        somma = (num_conf(x["somma_prezzi_peck"]) or 0) + (num_conf(x["somma_prezzi_produttore"]) or 0)
+    s_peck, s_prod = num_conf(x["somma_prezzi_peck"]) or 0, num_conf(x["somma_prezzi_produttore"]) or 0
+    dpc = num_conf(x.get("differenza_pct")) if (x.get("differenza_pct") or "").strip() else None
+    n_stime = int(num_conf(x.get("n_stime")) or 0)
+    frase = {
+        "bassa": "Copertura bassa (sotto il 50%): la somma è solo una piccola parte del contenuto, quindi non dice se la box conviene "
+                 "o no. Per questo non calcoliamo nessuna percentuale.",
+        "media": "Copertura parziale: la somma è solo una parte del contenuto. La differenza con il prezzo della pagina comprende "
+                 "anche i prodotti senza prezzo, quindi non è un ricarico.",
+        "buona": "Copertura buona: quasi tutto il contenuto ha un prezzo. La differenza è, al massimo, il valore di confezione, "
+                 "nastri e servizio (più i pochi prodotti senza prezzo).",
+    }.get(giudizio, "")
+    stat = (f'<div class="stat"><div><b>{euro_it(prezzo_box)}</b>prezzo della pagina Peck</div>'
+            f'<div><b>{euro_it(somma)}</b>somma dei prezzi trovati</div>'
+            f'<div><b>{n_prezzati} su {n_el}</b>prodotti con un prezzo</div>'
+            f'<div><b>{num(round(cop))}%</b>copertura</div>'
+            + (f'<div><b>{H(pct_segno(dpc))}</b>la pagina rispetto alla somma</div>' if dpc is not None and giudizio != "bassa" else "")
+            + '</div>')
+    barra = (f'<div class="copertura" role="img" aria-label="Copertura {round(cop)}%"><span style="width:{min(cop, 100):.0f}%"></span></div>')
+    dettaglio_somma = (f'<p class="meta">La somma è di {euro_it(s_peck)} di prezzi di Peck (delivery, schede singole, carta dell’enoteca) '
+                       f'e {euro_it(s_prod)} di prezzi dei produttori.'
+                       + (f' {n_stime} dei prezzi sommati {"è una stima" if n_stime == 1 else "sono stime"} (a peso, in proporzione o con formato presunto).'
+                          if n_stime else "") + '</p>')
+    per_nome = {nz(items[i]["nome_originale"]): items[i] for i in b["elementi"] if i in items}
+    righe = ""
+    for ri in bv["righe"]:
+        it = per_nome.get(nz(ri["prodotto"]))
+        nome = (f'<a href="{r}prodotto/{it["id"]}/">{H(it["nome"])}</a>' if it else H(bello(ri["prodotto"])))
+        p = num_conf(ri["prezzo"]) if ri["prezzo"] else None
+        if p is not None:
+            fonte = FONTE_PREZZO_BOX.get(ri["fonte"], ri["fonte"])
+            q = (ri.get("qualita") or "").strip()
+            stima = f' <span class="meta">({H(q)})</span>' if q and q != "diretto" else ""
+            cella = f'<td class="num">{euro_it(p)}</td><td>{H(cap(fonte))}{stima}</td>'
+        else:
+            cella = f'<td class="num">—</td><td class="meta">{H(cap(ri["motivo_senza_prezzo"] or "senza prezzo"))}</td>'
+        righe += f"<tr><td>{nome}</td>{cella}</tr>"
+    tabella = (f'<details><summary>I prodotti, uno per uno ({len(bv["righe"])})</summary><div class="tab-scorri"><table class="tab">'
+               f'<thead><tr><th>Prodotto</th><th>Prezzo</th><th>Da dove viene</th></tr></thead><tbody>{righe}</tbody></table></div></details>'
+               if righe else "")
+    nota = f'<details><summary>Note del calcolo</summary><p>{H(x["nota"])}</p></details>' if x.get("nota") else ""
+    return (f'<section class="sezione" id="valore"><h2>Valore spacchettato</h2>'
+            f'<p class="meta">Quanto costerebbero, presi uno a uno, i prodotti di questa pagina di cui abbiamo trovato un prezzo, '
+            f'contro il prezzo della pagina. Nella somma non ci sono confezione, nastri e servizio. È un’indicazione, non un giudizio.</p>'
+            f'{stat}{barra}<p class="avviso-annata">{H(frase)}</p>{dettaglio_somma}{tabella}{nota}</section>')
+
+
+# ---------------------------------------------------------------------------
+# Prezzi confrontati (/prezzi/): TUTTI i confronti, cibo e vini, con filtri; le righe sono in docs/prezzi.json
+# e le disegna app.js (come l'Enoteca), a pagine.
+# ---------------------------------------------------------------------------
+
+def immagine_json(it, c=None):
+    """Come si disegna la foto di una riga: ["r", url, x, y, w, h, media, disegno, box] ritaglio; ["d", disegno, alt];
+    ["i", url] foto; ["n"] niente."""
+    if not it:
+        return ["n"]
+    rt, d = it.get("ritaglio"), it.get("disegno")
+    if rt and d:
+        return ["r", rt["url"], round(rt["x"], 4), round(rt["y"], 4), round(rt["w"], 4), round(rt["h"], 4),
+                1 if rt["certezza"] == "media" else 0, f"disegni/{d}.svg", rt["box_nome"]]
+    if d:
+        return ["d", f"disegni/{d}.svg", DISEGNI_NOMI.get(d, d)]
+    return ["i", it["foto"]] if it.get("foto") else ["n"]
+
+
+def r1(x):
+    return None if x is None else round(x, 1)
+
+
+def json_prezzi(righe, riep):
+    gruppi_cibo = [(c, cap(c)) for c in ORDINE_CATEGORIE if any(x["tipo"] == "c" and x["gruppo"] == c for x in righe)]
+    gruppi_vino = [(k, t) for k, t in GRUPPI_VINO if any(x["tipo"] == "v" and x["gruppo"] == k for x in righe)]
+    regioni = sorted({(x["w"]["paese"], x["w"]["r"]) for x in righe if x["tipo"] == "v" and x["w"]["r"]},
+                     key=lambda t: (t[0], t[1].lower()))
+    out = []
+    for x in righe:
+        if x["tipo"] == "c":
+            it = x["item"]
+            out.append({
+                "t": "c", "n": x["nome"], "g": x["gruppo"], "h": f"prodotto/{it['id']}/" if it else "",
+                "im": immagine_json(it) if it else (["i", x["foto"]] if x.get("foto") else ["n"]),
+                "sp": x["sim"], "st": x["sim_testo"], "dp": r1(x["dp"]), "b": x["base"], "d": x["data"], "s": x["src"],
+                "x": 1 if x["sim"] >= 2 else 0, "sd": 1 if x["solo_delivery"] else 0,
+                "pk": [x["p_peck"], x["f_peck"], x["kg_peck"], unita_di(x["f_peck"])],
+                "fu": [[f["fonte"], f["nome"], f["url"], f["p"], f["f"], f["kg"], unita_di(f["f"])] for f in x["fuori"]],
+            })
+        else:
+            w, g, ref = x["w"], x["g"], x["ref"]
+            out.append({
+                "t": "v", "n": x["nome"], "g": x["gruppo"], "h": f"vino/{w['d']}/", "ph": url_foto_vino(w),
+                "a": w["a"], "r": w["r"], "pa": w["paese"], "ti": w["tipo"],
+                "sp": x["sim"], "st": x["sim_testo"], "dp": r1(x["dp"]), "b": "al litro", "d": x["data"], "s": x["src"],
+                "x": 1 if x["occ"] else 0, "nd": 1 if x["nd"] else 0, "l": g["litri"],
+                "pk": [g["p_peck"], g["pl_peck"], g["a_peck"]],
+                "fu": [[o["fonte"], o["url"], o["a"], o["p"], o["pl"], 1 if o["disp"] else 0, r1(o["dp"]),
+                        1 if o["stessa"] else 0, 1 if o is ref else 0] for o in g["offerte"]],
+            })
+    return {
+        "meta": {"data": max(x["data"] for x in righe), "soglia": SOGLIA_OCCASIONE,
+                 "gruppi": [{"k": k, "t": t, "v": 0} for k, t in gruppi_cibo] + [{"k": k, "t": t, "v": 1} for k, t in gruppi_vino],
+                 "regioni": [[p, r] for p, r in regioni], "riepilogo": {k: r1(v) if isinstance(v, float) else v for k, v in riep.items()}},
+        "righe": out,
+    }
+
+
+def pagina_prezzi(righe, riep, r):
+    soglia = f"{SOGLIA_OCCASIONE:g}".replace(".", ",")
+    gruppi_cibo = [c for c in ORDINE_CATEGORIE if any(x["tipo"] == "c" and x["gruppo"] == c for x in righe)]
+    gruppi_vino = [(k, t) for k, t in GRUPPI_VINO if any(x["tipo"] == "v" and x["gruppo"] == k for x in righe)]
+    regioni = sorted({(x["w"]["paese"], x["w"]["r"]) for x in righe if x["tipo"] == "v" and x["w"]["r"]},
+                     key=lambda t: (t[1].lower(), t[0]))
+    opt_cat = ('<optgroup label="Cibo">' + "".join(f'<option value="{H(c)}">{H(cap(c))}</option>' for c in gruppi_cibo) + "</optgroup>"
+               '<optgroup label="Vino">' + "".join(f'<option value="{H(k)}">{H(t)}</option>' for k, t in gruppi_vino) + "</optgroup>")
+    opt_reg = "".join(f'<option value="{H(rg)}">{H(rg)} ({H(p)})</option>' for p, rg in regioni)
+    campi = (
+        f'<div class="campo"><label for="f-cat">Categoria</label><select id="f-cat" name="cat"><option value="">Tutte</option>{opt_cat}</select></div>'
+        f'<div class="campo"><label for="f-reg">Regione del vino</label><select id="f-reg" name="reg"><option value="">Tutte</option>{opt_reg}</select></div>'
+        '<div class="campo"><label for="f-fonte">Dove si confronta</label><select id="f-fonte" name="fonte"><option value="">Dappertutto</option>'
+        '<option value="produttore">Dal produttore</option><option value="altro">Da un altro produttore</option>'
+        '<option value="tannico">Tannico</option><option value="enoteche">Enoteche (Callmewine, Millesima, Xtrawine)</option></select></div>'
+        '<div class="campo spunta"><input type="checkbox" id="f-stesso" name="stesso" value="1"><label for="f-stesso">Solo lo stesso prodotto</label></div>'
+        f'<div class="campo spunta"><input type="checkbox" id="f-occ" name="occ" value="1"><label for="f-occ">Solo dove Peck costa meno (o al massimo +{soglia}%)</label></div>'
+        '<div class="campo"><label for="f-ord">Ordina</label><select id="f-ord" name="ord"><option value="">Per categoria, poi dal più conveniente</option>'
+        '<option value="dp-su">Tutto insieme: Peck costa meno prima</option><option value="dp-giu">Tutto insieme: Peck costa di più prima</option>'
+        '<option value="nome">Per nome</option></select></div>')
+
+    def segno(v):
+        return "n.d." if v is None else pct_segno(v)
+    s = riep
+    corpo = f"""<section>
+<h1 class="titolo-pagina">Prezzi confrontati</h1>
+<p class="intro">Tutti i confronti di prezzo che abbiamo, in un posto solo: il cibo di Peck contro il sito di chi lo fa, il vino contro Tannico e le enoteche online (Callmewine, Millesima, Xtrawine). Ogni riga dice quanto costa a parità di peso o di litri e dove; la barra mostra la differenza: <span class="leg leg-meno">verde</span> se da Peck costa meno, <span class="leg leg-pari">neutra</span> entro il ±{soglia}%, <span class="leg leg-piu">calda</span> se costa di più. Gli abbinamenti sono nostri e possono sbagliare; prezzi e formati cambiano. Come si confronta: «<a href="{r}come-funziona/#confronto-prezzi">Come funziona</a>». Solo le migliori occasioni stanno nell’<a href="{r}occasioni/">Angolo delle occasioni</a>.</p>
+<div class="riepilogo" id="riepilogo">
+<div><b>{num(s["n"])}</b>confronti in tutto</div>
+<div><b>{num(s["n_cibo"])}</b>di cibo{(" (" + str(s["n_alt"]) + " con un altro produttore)") if s["n_alt"] else ""}</div>
+<div><b>{num(s["n_vini"])}</b>di vino</div>
+<div><b>{segno(s["med_cibo"])}</b>differenza mediana, cibo (dal produttore)</div>
+<div><b>{segno(s["med_vini"])}</b>differenza mediana, vino</div>
+</div>
+<p class="meta nota-ord">Differenza mediana: la metà dei confronti sta sotto e metà sopra. Per il cibo, sui soli «stesso prodotto» e «molto simile» è {segno(s["med_cibo_ok"])} ({num(s["n_cibo_ok"])} confronti); per il vino, sulle bottiglie ancora in vendita è {segno(s["med_vini_st"])} ({num(s["n_vini_st"])}). Peck costa meno, o al massimo il {soglia}% in più, in {num(s["meno_cibo"])} confronti di cibo e in {num(s["meno_vini"])} di vino. Confronto del {data_lunga(max(x["data"] for x in righe))}; i prezzi di Peck (delivery e carta dell’enoteca) si aggiornano solo a mano.</p>
+{form_filtri("Filtri: prezzi confrontati", ctl_cerca("Cerca un prodotto, un vino o un’azienda", "per esempio: tartufo, Barolo, Tannico"), campi)}
+<div class="barra-lista"><p class="conteggio" id="conteggio" role="status" aria-live="polite">{num(s["n"])} confronti</p><p class="meta" id="riepilogo-vivo"></p></div>
+<div class="lista" id="lista" data-prezzi data-json="../prezzi.json" data-singolare="confronto" data-plurale="confronti">
+<ul class="griglia occasioni prezzi"></ul>
+<p class="vuoto" hidden>Nessun risultato. Prova a togliere qualche filtro.</p>
+<p class="caricamento">Carico i confronti…</p>
+<button type="button" class="bottone secondario altri" hidden>Mostra altri</button>
+</div>
+<noscript><p class="meta">Per filtrare i confronti serve JavaScript. Senza, trovi i migliori nell’<a href="{r}occasioni/">Angolo delle occasioni</a> e, in ogni pagina di prodotto o di vino, il confronto che la riguarda.</p></noscript>
+</section>"""
+    return corpo, (f"Tutti i confronti di prezzo: cibo di Peck contro il sito del produttore, vino contro Tannico e le enoteche online, "
+                   f"con filtri e differenza al chilo o al litro. {AVVISO}")
 
 
 # ---------------------------------------------------------------------------
 # Come funziona
 # ---------------------------------------------------------------------------
 
-def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
+def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico=(), az=None, riep=None, n_alt=0, n_bv=0):
     conta = Counter(d["stato"] for d in dispensa)
     def _con(k):
         return sum(1 for w in V["vini"] if w.get("voti") and w["voti"][k])
@@ -2649,7 +3451,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
                if VOTI["en"] else "")
     n_delivery = sum(1 for d in dispensa if d.get("delivery"))
     n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else [])
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else []) +         [f"confronto/{n}" for n in ("vini_enoteche_prezzi", "alternative_7", "box_valore", "box_valore_righe") if (DATI / "confronto" / f"{n}.csv").exists()] +         [n for n in ("ritagli", "storico") if (DATI / f"{n}.csv").exists()]
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -2681,7 +3483,10 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
     n_item_conf = sum(1 for d in dispensa if d.get("confronti"))
     n_produttori_conf = len({c["azienda"] for c in righe_conf if c["azienda"]})
     n_vini_conf = len(CV)
-    n_vini_disp = sum(1 for c in CV.values() if c["disp"])
+    n_vini_disp = sum(1 for gl in CV.values() if any(g["rif_stock"] for g in gl))
+    n_offerte_vini = Counter(o["fonte"] for gl in CV.values() for g in gl for o in g["offerte"])
+    n_ritagli = sum(1 for d in dispensa if d.get("ritaglio"))
+    sezione_datate = sezione_fotografie_datate(list(storico), az or {})
     soglia_t = f"{SOGLIA_OCCASIONE:g}".replace(".", ",")
     sezione_confronto = f"""<h2 id="confronto-prezzi">Confronto prezzi</h2>
 <p>Per molti prodotti sappiamo chi li fa. Quando quel produttore vende lo stesso prodotto (o uno molto simile) sul suo sito, ne scriviamo il prezzo accanto a quello di Peck; per i vini facciamo lo stesso con Tannico. È un confronto fra prezzi scritti sui siti, non una valutazione: quello che Peck aggiunge (negozio, marchio, selezione, consegna) non si misura qui.</p>
@@ -2691,8 +3496,11 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
 <li><strong>Il confronto è al chilo o al litro.</strong> I formati sono spesso diversi (un tubetto da 30 g contro uno da 40 g), quindi la differenza si calcola sul prezzo al kg o al litro: «Da Peck costa il 72% in più» vuol dire che, a parità di peso, Peck costa il 72% in più. Quando i formati non sono confrontabili (per esempio 580 ml contro 450 g) lo diciamo e la differenza è per confezione. Il bollino «+72% vs produttore» sulle schede della Dispensa compare solo per «stesso prodotto» e «molto simile» con due prezzi veri; il filtro «Con confronto prezzi» mostra i {n_conf_ok} prodotti che lo hanno.</li>
 <li><strong>Prodotti che si trovano solo nelle box.</strong> Molti prodotti Peck non si comprano da soli: stanno solo dentro le box, e non hanno un prezzo singolo. Di quelli mostriamo solo il prezzo del produttore e scriviamo «Da Peck si trova solo nelle box».</li>
 <li><strong>Robots.txt e agenti automatici.</strong> Prima di scaricare un catalogo si legge il <code>robots.txt</code> del produttore e lo si rispetta, comprese le sezioni che vietano i programmi di intelligenza artificiale. Due produttori li vietano per nome: Panificio Follador e Casa Iuorio. Non li abbiamo confrontati, nemmeno cambiando il nome del programma: le loro righe dicono «confronto da fare a mano», con il link al loro sito, e i dati scaricati prima di accorgerci sono stati cancellati. Se un sito non ha un negozio con i prezzi, la riga non c’è.</li>
-<li><strong>I vini con Tannico.</strong> Per ogni formato di Peck cerchiamo fra i prodotti di Tannico lo stesso vino (nome uguale, stessa cantina), con gli stessi litri e un’annata che disti al massimo 2 anni; prezzi con IVA, divisi per i litri. Sono {n_vini_conf} bottiglie confrontabili, {n_vini_disp} delle quali disponibili su Tannico. Il prezzo di Tannico si vede nella pagina del vino («Prezzi altrove»). Se la bottiglia non è disponibile su Tannico lo diciamo e non la mettiamo nell’Angolo delle occasioni.</li>
+<li><strong>I vini con Tannico e le enoteche.</strong> Per ogni formato di Peck cerchiamo lo stesso vino (nome uguale, stessa cantina), con gli stessi litri e un’annata che disti al massimo 2 anni, da <strong>Tannico</strong> ({n_offerte_vini["Tannico"]} offerte) e dalle enoteche online <strong>Callmewine</strong> ({n_offerte_vini["Callmewine"]}), <strong>Millesima</strong> ({n_offerte_vini["Millesima"]}) e <strong>Xtrawine</strong> ({n_offerte_vini["Xtrawine"]}); prezzi con IVA, divisi per i litri. Sono {n_vini_conf} vini confrontabili, {n_vini_disp} dei quali in vendita oggi in almeno un negozio. Il confronto è con l’offerta più bassa fra i negozi che la vendono, preferendo la stessa annata di Peck; se l’unica offerta è di un’altra annata, l’anno è scritto (nella pagina del vino, in «Prezzi altrove», ci sono tutte le offerte). Millesima è il sito francese: il prezzo è quello con IVA per la consegna in Francia. Zachys (americano, prezzi senza imposte) e le casse, i set e gli en primeur non si confrontano mai. Se nessun negozio ha la bottiglia in vendita lo diciamo e non la mettiamo nell’Angolo delle occasioni.</li>
+<li><strong>Un altro produttore.</strong> Per {n_alt} prodotti abbiamo trovato la stessa ricetta venduta da un’azienda <em>diversa</em> da quella che la fa per Peck. Sta in un riquadro a parte («Un’alternativa da un altro produttore»), non dice mai «stesso prodotto» e non entra nell’Angolo delle occasioni; in «Prezzi confrontati» ha la sua voce (filtro «Da un altro produttore»).</li>
+<li><strong>Prezzi confrontati.</strong> La pagina <a href="../prezzi/">Prezzi confrontati</a> raccoglie tutti i confronti, cibo e vino, per categoria, con la differenza al kg o al litro (la barra è verde se Peck costa meno, neutra entro il ±{soglia_t}%, calda se costa di più) e i filtri per categoria, fonte e livello. Per il vino, «stesso prodotto» vuol dire stessa annata. Si disegna con JavaScript da un file di dati. Dentro ci sono anche i prodotti del delivery che non sono nello shop online e non hanno una pagina nostra.</li>
 <li><strong>L’Angolo delle occasioni.</strong> Elenca i confronti in cui Peck costa meno, o al massimo il {soglia_t}% in più: la soglia è la costante <code>SOGLIA_OCCASIONE</code> in <code>src/sito.py</code> ed è una nostra scelta. Sotto, chiuso, ci sono i 20 casi in cui Peck costa di più.</li>
+<li><strong>Il valore spacchettato.</strong> In ogni pagina di box, «Valore spacchettato» somma i prezzi dei singoli prodotti di cui abbiamo un prezzo (delivery di Peck, schede singole dello shop, carta dell’enoteca, siti dei produttori) e li mette accanto al prezzo della pagina, dicendo sempre la <em>copertura</em>: quanti prodotti su quanti hanno un prezzo. Sotto il 50% non calcoliamo nessuna percentuale, perché la somma è solo una piccola parte; in nessun caso la differenza è un ricarico, perché non contiene confezione, nastri e servizio né i prodotti senza prezzo. Per questo non la chiamiamo né risparmio né rincaro.</li>
 <li><strong>Quando si aggiorna.</strong> I prezzi dei produttori e di Tannico sono pensati per essere ricontrollati una volta a settimana, in automatico. I prezzi di Peck (servizio delivery e carta dell’enoteca) invece si aggiornano solo a mano: se Peck cambia un prezzo, qui resta quello vecchio finché qualcuno non ricontrolla. Ogni confronto riporta la data in cui è stato fatto.</li>
 </ul>
 
@@ -2719,7 +3527,8 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
 Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enoteche, poi Wine Enthusiast), altrimenti il giudizio di Tannico, altrimenti gli utenti (solo con almeno 10 voti). Il voto si usa solo se l’annata è quella di Peck o dista al massimo 2 anni (per i vini senza annata, solo se manca da entrambe le parti); se è diversa, l’anno è scritto accanto al voto. Per le annate più lontane i voti di Tannico restano nella pagina del vino come riferimento, senza bollino; quelli delle altre fonti non li usiamo. Nell’Enoteca «Con voto» include tutte le fonti, «solo critici» tiene solo chi ha un critico; l’ordine per voto non mischia le scale (critici, poi Tannico, poi utenti; le stelle sono moltiplicate per 20 solo per metterle in ordine tra loro).</li>
 </ul>
 
-{sezione_confronto}<h2>Quanto siamo sicuri</h2>
+{sezione_confronto}{sezione_datate}
+<h2>Quanto siamo sicuri</h2>
 <p>Ogni azienda ha un’etichetta:</p>
 <ul>
 <li>{badge("certa")} una fonte mostra proprio quell’indirizzo o quel codice con quell’azienda.</li>
@@ -2739,7 +3548,7 @@ Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enot
 <li>Il bollo CE dice dove sta lo stabilimento, non di chi è: l’azienda va cercata negli elenchi. Alcuni codici non sono bolli sanitari.</li>
 <li>Le righe “non trovata” sono dove la ricerca non è arrivata; si possono riprovare. “Nessuno shop online” vuol dire solo che non l’abbiamo trovato sul sito ufficiale.</li>
 <li>I testi di Peck hanno refusi (per esempio “Ortobello” per “Orbetello”). Le frasi sono copiate com’erano; dove due scritture indicano chiaramente lo stesso posto, le abbiamo unite.</li>
-<li>Quasi nessun prodotto della Dispensa ha una foto tutta sua nello shop: Peck mostra solo la foto della box. Per {n_foto_delivery} prodotti la foto viene dal servizio delivery; per gli altri c’è un nostro disegno, scelto in base al nome (la foto della box si vede nella pagina della box).</li>
+<li>Quasi nessun prodotto della Dispensa ha una foto tutta sua nello shop: Peck mostra solo la foto della box. Per {n_foto_delivery} prodotti la foto viene dal servizio delivery; per {n_ritagli} c’è un <em>ritaglio</em> della foto della box in cui il prodotto si vede (un ingrandimento fatto con il solo CSS: la foto resta sul server di Peck e non è copiata; se il prodotto è stato riconosciuto per esclusione lo scriviamo); per gli altri c’è un nostro disegno, scelto in base al nome. Se la foto non si carica, torna il disegno.</li>
 <li>Nell’enoteca l’intestazione della carta parla di 1.005 cantine, ma l’elenco pubblico ne mostra {M["n_cantine"]} ({num(M["n_vini"])} vini). Non sappiamo perché: forse sono vini archiviati o nascosti.</li>
 <li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
 <li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
@@ -2751,8 +3560,11 @@ Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enot
 <p>Le categorie dei prodotti sono decise da un programma che cerca alcune parole nel nome del prodotto: la prima categoria che trova vince. Non è una classificazione ufficiale e qualche prodotto può finire nella categoria sbagliata. Le parole sono queste (il resto va in «altro»):</p>
 <div class="tab-scorri"><table class="tab"><thead><tr><th>Categoria</th><th>Parole cercate nel nome</th></tr></thead><tbody>{righe_cat}</tbody></table></div>
 
+<h2 id="ritagli">I ritagli dalle foto delle box</h2>
+<p>Per i prodotti senza una foto propria e non trovati nel delivery, dove possibile mostriamo il pezzo della foto della box in cui si vedono. I rettangoli (posizione e misura in frazioni della foto, con «alta» o «media» certezza) sono scelti a mano e stanno in <code>data/ritagli.csv</code>; il ritaglio è un riquadro quadrato con la foto collegata, ingrandita e spostata dal CSS, e sotto c’è sempre il disegno. «Media» vuol dire che il prodotto è stato riconosciuto per esclusione o dal colore, non dal nome sull’etichetta: la didascalia lo dice.</p>
+
 <h2>Come sono scelti i disegni</h2>
-<p>I prodotti senza una foto tutta loro (e non trovati nel delivery) hanno un disegno. Anche qui decide un programma: cerca nel nome le parole qui sotto (vince la prima riga che trova); se non ne trova, usa il disegno della categoria. Chi ha una foto propria di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tiene la foto.</p>
+<p>I prodotti senza una foto tutta loro (e senza ritaglio, e non trovati nel delivery) hanno un disegno. Anche qui decide un programma: cerca nel nome le parole qui sotto (vince la prima riga che trova); se non ne trova, usa il disegno della categoria. Chi ha una foto propria di Peck (panettoni, pandoro, veneziana, salmone, frutta disidratata) tiene la foto.</p>
 <div class="tab-scorri"><table class="tab"><thead><tr><th>Disegno</th><th>Parole cercate nel nome</th><th>Categoria</th></tr></thead><tbody>{righe_disegni}</tbody></table></div>
 
 <h2>Foto, caratteri e riservatezza</h2>
@@ -2782,8 +3594,8 @@ def pagina_404():
 # ---------------------------------------------------------------------------
 
 CARTELLE_GENERATE = ["dispensa", "prodotto", "box", "produttori", "produttore", "enoteca", "cantina",
-                     "vino", "occasioni", "come-funziona"]
-FILE_GENERATI = ["index.html", "404.html", "vini.json", "dati.json", "sitemap.xml", "robots.txt"]
+                     "vino", "occasioni", "prezzi", "come-funziona"]
+FILE_GENERATI = ["index.html", "404.html", "vini.json", "prezzi.json", "dati.json", "sitemap.xml", "robots.txt"]
 
 
 def pulisci_docs():
@@ -2806,7 +3618,15 @@ def scrivi_sito():
     V, stv = costruisci_vini(box_per_nome)
     az, items, boxes = prepara_cibo(dispensa, box, produttori)
     righe_conf = collega_confronti(dispensa, az)
-    CV = carica_confronto_vini()
+    CV = carica_offerte_vini()
+    alternative = carica_alternative(dispensa)
+    storico = carica_storico(dispensa, az, st)
+    BV = carica_box_valore(box)
+    righe_prezzi = costruisci_righe_prezzi(righe_conf, alternative, V, CV)
+    riep = riepilogo_prezzi(righe_prezzi)
+    chiavi_conf = Counter(nome_azienda_chiave(x["azienda"], "") for x in righe_prezzi if x["tipo"] == "c" and x.get("azienda"))
+    for z in produttori:
+        z["n_conf"] = chiavi_conf.get(nome_azienda_chiave(z["ragione"], ""), 0) if z["trovata"] else 0
     M = V["meta"]
     pulisci_docs()
 
@@ -2829,7 +3649,7 @@ def scrivi_sito():
                                 descr=f"Le {len(box)} pagine dello shop di Peck, “spacchettate”: ogni prodotto con chi lo fa. {AVVISO}"),
                   "box (elenco)")
     for b in box:
-        corpo, descr = pagina_box(b, items, az, "../../")
+        corpo, descr = pagina_box(b, items, az, "../../", BV.get(b["id"]))
         scrivi_pagina(f"box/{b['id']}", layout(titolo=b["nome"], descr=descr, corpo=corpo,
                                                rel=f"box/{b['id']}", sezione="box"), "box")
 
@@ -2859,15 +3679,20 @@ def scrivi_sito():
                                                rel=f"vino/{w['d']}", sezione="enoteca"), "vino")
 
     # --- Angolo delle occasioni
-    corpo, descr = pagina_occasioni(voci_confronto(righe_conf, V, CV, "../"), "../")
+    corpo, descr = pagina_occasioni(voci_confronto(righe_prezzi, "../"), "../")
     scrivi_pagina("occasioni", layout(titolo="Angolo delle occasioni", descr=descr, corpo=corpo, rel="occasioni",
                                       sezione="occasioni"), "occasioni")
+
+    # --- Prezzi confrontati
+    corpo, descr = pagina_prezzi(righe_prezzi, riep, "../")
+    scrivi_pagina("prezzi", layout(titolo="Prezzi confrontati", descr=descr, corpo=corpo, rel="prezzi", sezione="prezzi"), "prezzi")
+    n_prezzi_json = scrivi_json("prezzi.json", json_prezzi(righe_prezzi, riep))
 
     # --- Come funziona, 404
     scrivi_pagina("come-funziona", layout(
         titolo="Come funziona", sezione="come-funziona", rel="come-funziona",
         descr=f"Da dove vengono i dati di Peck Tracker, quanto siamo sicuri e quali sono i limiti. {AVVISO}",
-        corpo=pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV)), "come funziona")
+        corpo=pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico, az, riep, len(alternative), len(BV))), "come funziona")
     (DOCS / "404.html").write_text(pagina_404(), encoding="utf-8")
 
     # --- dati per i filtri dell'enoteca, sitemap, robots
@@ -2878,6 +3703,12 @@ def scrivi_sito():
                                       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + "</urlset>\n",
                                       encoding="utf-8")
     (DOCS / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {URL_SITO}sitemap.xml\n", encoding="utf-8")
+    st["storico"] = storico
+    st["righe_prezzi"] = righe_prezzi
+    st["riep"] = riep
+    st["prezzi_json"] = n_prezzi_json
+    st["box_valore"] = len(BV)
+    st["alternative"] = len(alternative)
     return dispensa, box, produttori, V, st, stv, n_json
 
 
@@ -2887,7 +3718,10 @@ def main():
     print(f"pagine scritte: {sum(CONTA.values())}  (+ 404.html)")
     for k, n in CONTA.items():
         print(f"   {k:20} {n}")
-    print(f"vini.json: {n_json/1024:.0f} KB")
+    print(f"vini.json: {n_json/1024:.0f} KB   prezzi.json: {st['prezzi_json']/1024:.0f} KB")
+    print("ritagli usati:", st["ritagli"], " senza box:", st["ritagli_senza_box"], " non usati:", st["ritagli_non_usati"])
+    print("confronti:", {k: (round(v, 1) if isinstance(v, float) else v) for k, v in st["riep"].items()})
+    print("storico:", len(st["storico"]), " alternative:", st["alternative"], " box con valore:", st["box_valore"])
     print(f"elementi (dispensa): {st['elementi']}   box/pagine: {st['box']}   produttori: {st['produttori']}"
           f"   vini: {V['meta']['n_vini']}   cantine: {V['meta']['n_cantine']}")
     print(f"righe di origine con un luogo/codice: {st['righe_con_luogo']}, abbinate a un'azienda: "
