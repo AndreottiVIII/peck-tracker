@@ -147,10 +147,15 @@ class Rete:
         self.s = requests.Session()
         self.s.headers.update({"User-Agent": UA, "Accept-Language": "it-IT,it;q=0.9",
                                "Accept": "application/json, text/html;q=0.9, */*;q=0.5"})
+        # Il runner di GitHub sta negli Stati Uniti: senza questi cookie gli shop Shopify
+        # mostrano i prezzi convertiti per il mercato americano (es. pasta 3,60 € -> 5,00).
+        self.s.cookies.set("localization", "IT")
+        self.s.cookies.set("cart_currency", "EUR")
         self.ultima = 0.0
         self.robots = {}      # host -> Robots
         self.ritardi = {}     # host -> secondi
         self.bloccati = {}    # host -> motivo
+        self.valuta = {}      # host -> valuta del carrello Shopify
         self.ultima_host = {}
 
     def _aspetta(self, host):
@@ -294,6 +299,19 @@ def da_shopify(rete, url_pagina, host, schema, rob):
             err = "risposta non JSON"
             continue
         prod = j.get("product", j)
+        # controllo valuta (una volta per sito): la pagina prodotto dichiara la moneta in cui ci
+        # mostra i prezzi (og:price:currency / priceCurrency). /cart.js no: robots.txt lo vieta.
+        if host not in rete.valuta:
+            rete.valuta[host] = "?"
+            if rob.permesso(m.group(1))[0]:
+                rp, _ = rete.get(base, host)
+                if rp is not None and rp.status_code == 200:
+                    mv = (re.search(r'og:price:currency"\s+content="([A-Z]{3})', rp.text)
+                          or re.search(r'"priceCurrency"\s*:\s*"([A-Z]{3})"', rp.text))
+                    if mv:
+                        rete.valuta[host] = mv.group(1)
+        if rete.valuta[host] not in ("EUR", "?"):
+            return None, f"lo shop mostra i prezzi in {rete.valuta[host]}, non in euro"
         out = []
         for v in prod.get("variants") or []:
             prezzo = prezzo_da(v.get("price"))
