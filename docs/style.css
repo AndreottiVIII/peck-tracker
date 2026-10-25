@@ -87,6 +87,7 @@ html { scroll-padding-top: 3.6rem; }
     margin-right: 0; font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; color: var(--marrone); text-decoration: none;
   }
   .mini-logo:hover { text-decoration: none; color: var(--marrone-scuro); }
+  .mini-logo .sole { width: 1.2rem; height: 1.2rem; flex: none; margin-right: .4rem; }
   .testata.compatta .mini-logo { max-width: 10rem; opacity: 1; margin-right: 1.8rem; }
 }
 @media (prefers-reduced-motion: no-preference) {

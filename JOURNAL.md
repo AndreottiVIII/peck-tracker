@@ -95,3 +95,4 @@ Le decisioni prese, con la data e il perche'. Si aggiunge in fondo, non si riscr
   hanno mostrato prezzi convertiti per il mercato americano (pasta 3,60 -> 5,00). Prezzi ripristinati;
   src/aggiorna_prezzi_produttori.py ora manda i cookie localization=IT / cart_currency=EUR e salta i
   siti che dichiarano una valuta diversa dall'euro.
+- **favicon: sole disegnato da noi, non il marchio Peck** (25/10): disco giallo con bordo marrone e 8 raggi dritti, niente faccia, fiamme, puntini o scritte. docs/favicon.svg (a mano), favicon-32.png e apple-touch-icon.png (180, fondo crema arrotondato); collegati in ogni pagina da src/sito.py e, piccolo, accanto a «Peck Tracker» nella barra del menu compatta.

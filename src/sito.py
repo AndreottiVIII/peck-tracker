@@ -1323,10 +1323,12 @@ MARRONE_PECK = "#5E4824"   # --marrone-peck nel CSS di peck.it
 
 FONT = ("https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900"
         "&family=Playfair+Display:ital,wght@1,400;1,500&display=swap")
-FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect "
-           "width='32' height='32' fill='%23ffcd45'/%3E%3Ccircle cx='15' cy='15' r='7' fill='none' "
-           "stroke='%235e4824' stroke-width='3'/%3E%3Cpath d='M20 20l6 6' stroke='%235e4824' "
-           "stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E")
+# Il nostro sole (docs/favicon.svg, disegnato da noi: NON e' il sole del marchio Peck). Nella barra del menu
+# va in linea, senza la regola per il tema scuro del favicon (la barra e' sempre gialla).
+SOLE_SVG = ('<svg class="sole" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><g stroke="#5E4824" '
+            'stroke-linecap="round"><path stroke-width="2.6" d="M16 5V2M23.78 8.22L25.9 6.1M27 16H30M23.78 23.78L25.9 '
+            '25.9M16 27V30M8.22 23.78L6.1 25.9M5 16H2M8.22 8.22L6.1 6.1"/><circle cx="16" cy="16" r="7" fill="#FFCD45" '
+            'stroke-width="2.4"/></g></svg>')
 
 # Vecchi indirizzi del sito (con #/): rimandano alle pagine nuove
 REDIRECT_VECCHI = (
@@ -1497,7 +1499,9 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False, re
 <meta name="theme-color" content="{GIALLO_PECK}">
 <meta name="referrer" content="{referrer}">
 <link rel="canonical" href="{H(canon)}">
-<link rel="icon" href="{FAVICON}">
+<link rel="icon" href="{r}favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="{r}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{r}apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{FONT}">
@@ -1517,7 +1521,7 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False, re
       </div>
     </div>
     <div class="barra">
-      <a class="mini-logo" href="{r}" aria-hidden="true" tabindex="-1">Peck Tracker</a>
+      <a class="mini-logo" href="{r}" aria-hidden="true" tabindex="-1">{SOLE_SVG}Peck Tracker</a>
       <nav aria-label="Sezioni del sito" class="menu">{menu}</nav>
     </div>
   </div>
