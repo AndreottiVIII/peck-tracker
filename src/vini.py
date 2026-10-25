@@ -12,6 +12,10 @@ Uso:  python -I src/vini.py [--pausa SECONDI] [--forza]
   data/raw/winerim/vini/<id>.json: servono per i dati strutturati sopra. I testi lunghi che ci sono
   nelle schede (note di degustazione, storia della cantina) restano in data/raw/ (non pubblicata) e
   NON vanno copiati nel sito ne' nei CSV.
+- Aggiornamento settimanale (GitHub Actions, .github/workflows/aggiorna.yml): su un computer pulito non ci sono le
+  schede in data/raw/winerim/vini/. I dati di dettaglio di un vino gia' presente nel vini.csv pubblicato si
+  riusano da li' (`PRECEDENTI`) e la scheda si scarica solo per i vini nuovi. `--max-minuti N` ferma lo scarico
+  delle schede dopo N minuti (il resto arriva alla prossima volta).
 - Formato (colonne `litri` e `formato_nome` di vini.csv): vedi litri_riga() e nome_formato(). Nomi: 3 L =
   "Jeroboam" (Champagne e resto del mondo) ma "Doppio Magnum" a Bordeaux; 4,5 L = "Rehoboam"; 5 L = "Rehoboam (5 L)"
   (cosi' lo chiama la carta); 6 L = "Mathusalem" ("Impériale" a Bordeaux). Il numero di `litri` e' quello certo:
@@ -90,17 +94,41 @@ def scarica(forza, pausa):
     return file
 
 
-def scarica_dettagli(vini, pausa):
-    """Scarica la scheda di ogni vino in data/raw/winerim/vini/<id>.json (salta quelle gia' scaricate)."""
+PRECEDENTI = {}   # id -> campi di dettaglio gia' presenti nel vini.csv pubblicato (vedi carica_precedenti)
+
+
+def carica_precedenti():
+    """Campi di dettaglio (gradazione, finestra di maturita', abbinamenti...) del vini.csv gia' scritto:
+    servono quando la scheda del vino non e' in data/raw (computer pulito, per esempio GitHub Actions)."""
+    PRECEDENTI.clear()
+    f = DATA / "vini.csv"
+    if not f.exists():
+        return
+    colonne = COL_VINI[COL_VINI.index("gradazione"):]
+    with open(f, encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            d = {c: r[c] for c in colonne if r.get(c)}
+            if d and r["id"] not in PRECEDENTI:
+                PRECEDENTI[r["id"]] = d
+    print(len(PRECEDENTI), "vini con dettagli gia' in vini.csv", flush=True)
+
+
+def scarica_dettagli(vini, pausa, max_minuti=None):
+    """Scarica la scheda di ogni vino in data/raw/winerim/vini/<id>.json (salta quelle gia' scaricate e quelle
+    i cui dettagli sono gia' nel vini.csv pubblicato)."""
     cartella = RAW / "vini"
     cartella.mkdir(parents=True, exist_ok=True)
     sess = requests.Session()
     sess.headers.update(HEAD)
     ultima, nuovi, errori = 0.0, 0, []
+    limite = time.time() + max_minuti * 60 if max_minuti else None
     for i, w in enumerate(vini, 1):
         f = cartella / f"{w['id']}.json"
-        if f.exists():
+        if f.exists() or str(w["id"]) in PRECEDENTI:
             continue
+        if limite and time.time() > limite:
+            print(f"  tempo finito dopo {nuovi} schede: le altre alla prossima volta", flush=True)
+            break
         for tentativo in (1, 2):
             attesa = pausa - (time.time() - ultima)
             if attesa > 0:
@@ -148,7 +176,7 @@ def dettaglio(wid):
     """Campi strutturali della scheda scaricata (o {} se manca). Nessun testo descrittivo."""
     f = RAW / "vini" / f"{wid}.json"
     if not f.exists():
-        return {}
+        return dict(PRECEDENTI.get(str(wid), {}))
     j = json.loads(f.read_text(encoding="utf-8"))
     out = {}
     alc = (j.get("wineDetails") or {}).get("alcohol")
@@ -510,11 +538,14 @@ def main():
     ap.add_argument("--dettagli", action="store_true",
                     help="scarica anche la scheda di ogni vino (1 richiesta al secondo, circa un'ora)")
     ap.add_argument("--pausa-dettagli", type=float, default=1.0)
+    ap.add_argument("--max-minuti", type=float, default=None,
+                    help="con --dettagli: smette di scaricare schede dopo questo tempo")
     a = ap.parse_args()
+    carica_precedenti()   # prima di riscrivere vini.csv
     scarica(a.forza, a.pausa)
     vini = leggi()
     if a.dettagli:
-        scarica_dettagli(vini, a.pausa_dettagli)
+        scarica_dettagli(vini, a.pausa_dettagli, a.max_minuti)
     righe, nome_cantina = costruisci(vini)
     scrivi_csv(DATA / "vini.csv", COL_VINI, righe)
     rc = cantine(vini, nome_cantina)

@@ -16,6 +16,7 @@ import re
 import statistics
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,7 +24,7 @@ import tannico as T  # noqa: E402
 
 RADICE = T.RADICE
 USCITA = RADICE / "data" / "confronto" / "vini_tannico.csv"
-DATA = "2026-10-25"
+DATA = date.today().isoformat()   # giorno in cui si fa il confronto (aggiornamento settimanale)
 CAMPI = ["id", "nome", "cantina", "annata_peck", "litri_peck", "prezzo_peck", "url_tannico", "annata_tannico",
          "litri_tannico", "prezzo_tannico", "prezzo_peck_al_litro", "prezzo_tannico_al_litro", "differenza_pct",
          "confrontabile", "disponibile_tannico", "data", "nota"]

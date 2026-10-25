@@ -302,6 +302,7 @@ quindi va bene sia sotto `/peck-tracker/` su GitHub Pages sia alla radice di un 
 | `enoteca/` | i 3.071 vini, con filtri e Schede / Elenco | 1 |
 | `cantina/<id>/` | una cantina e le sue etichette | 820 |
 | `vino/<id>-<nome>/` | un vino: foto, profilo di degustazione (punti e grafico a ragnatela), formati e prezzi, vini correlati, bottoni Vivino / Wine-Searcher / scheda completa in enoteca | 3.071 |
+| `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), e sotto, chiuso, i 20 casi in cui costa di piu' | 1 |
 | `come-funziona/`, `404.html` | spiegazioni, limiti, link controllati | 2 |
 
 Le pagine di prodotti, box, produttori, cantine e vini sono HTML completo, si leggono anche senza
@@ -321,8 +322,33 @@ alla scheda; `annata diversa`: stesso bottone con la nota «su Tannico c'e' l'an
 da `titolo_tannico`); `da controllare` con la sola nota «formato diverso (Peck 1500 ml, Tannico 750 ml)»: bottone
 con la nota «su Tannico c'e' la 0,75 L» (chiave `tf`; non conta per il filtro «Su Tannico» ne' per i voti); gli altri `da controllare` e `nessuna`: bottone «Cerca su Tannico» che apre la ricerca
 (`tannico.it/search?q=<cantina + nome>`, stesse parole di Vivino). Nell'Enoteca c'e' il filtro «Su
-Tannico». Non copiamo i prezzi di Tannico. I link diretti stanno anche in `docs/vini.json`
+Tannico». I prezzi di Tannico compaiono solo nel confronto con quelli di Peck (vedi «Confronto prezzi» qui sotto). I link diretti stanno anche in `docs/vini.json`
 (chiavi `tn`, `ta`, `tf`).
+
+**Confronto prezzi (produttori e Tannico).** Legge `data/confronto/risultati_*.csv` (tutti i file che trova: ogni gruppo di
+produttori ne scrive uno; colonne in `data/confronto/ISTRUZIONI.md`) e `data/confronto/vini_tannico.csv` (scritto da
+`src/confronto_vini.py`). Le righe «non trovato» non si mostrano mai. Una riga si attacca a un prodotto della Dispensa
+prima per `chiave_dispensa`, poi per `nome_peck` (senza accenti e punteggiatura); le righe senza pagina sulla Dispensa
+(2 piatti Joselito) compaiono solo nell'Angolo delle occasioni, senza link.
+- **Pagina prodotto, riquadro «Dal produttore»**: una scheda per produttore, dalla somiglianza piu' forte (stesso prodotto,
+  molto simile, simile). Con i due prezzi: «Da Peck costa il 72% in piu'» / «il 38% in meno» (la differenza e' quella
+  della colonna `differenza_pct`, al kg o al litro; `sito.py` controlla che i numeri tornino e scrive su che base:
+  «al kg», «al kg o al litro» se Peck e' in ml e il produttore in g, «per confezione» se i formati non si confrontano).
+  Senza prezzo Peck (prodotto solo nelle box): solo il prezzo del produttore e «Da Peck si trova solo nelle box». «Non
+  verificato» (Follador, Casa Iuorio: robots.txt che vieta gli agenti AI): solo «confronto da fare a mano» e il link al sito
+  del produttore (preso da `aziende.csv`). Se la nota dice «offerta» o «non disponibile online» c'e' una riga
+  «Attenzione». La nota intera sta in «Note del confronto».
+- **Dispensa**: il chip «+72% vs produttore» compare per «stesso prodotto» o «molto simile» con due prezzi veri (13 prodotti);
+  il filtro «Con confronto prezzi» (`cp=1`, attributo `data-cp`) mostra solo quelli.
+- **Pagina vino, riquadro «Prezzi altrove»**: solo se `confrontabile = si` (209 vini): prezzo di Tannico a bottiglia e al
+  litro, disponibilita' e link. Se la bottiglia non e' disponibile su Tannico lo dice.
+- **Angolo delle occasioni** (`/occasioni/`, voce di menu «Occasioni»): cibo («stesso prodotto» o «molto simile» con due
+  prezzi) e vini (`confrontabile = si` **e** disponibili su Tannico) in cui la differenza e' al massimo `SOGLIA_OCCASIONE`
+  (costante in `src/sito.py`, oggi +5%), dal piu' conveniente. Il riquadro chiuso «Dove Peck costa di piu'» mostra i
+  `N_COSTA_DI_PIU` = 20 scarti maggiori. L'aggiornamento settimanale dei prezzi degli altri negozi e' il workflow
+  descritto in «Aggiornamento automatico»; i prezzi di Peck del delivery si aggiornano solo a mano.
+- «Come funziona» ha la sezione «Confronto prezzi» (abbinamento, livelli, al kg, prodotti solo nelle box, robots.txt e
+  agenti AI, aggiornamento).
 
 **I voti (Tannico).** `python -I src/tannico.py voti` scarica la scheda prodotto (`/products/<handle>`, che il
 robots.txt di Tannico consente; 3 secondi di pausa, browser finto, se arriva 429 aspetta 60 secondi e rallenta,
@@ -384,10 +410,76 @@ caricato da li') e Playfair Display corsivo per le frasi di Peck. Non c'e' nessu
 testata prendendolo dal server di Peck. `docs/personale.js` e' nel `.gitignore` (controllo:
 `git check-ignore docs/personale.js`); se il file manca il sito funziona uguale, senza logo.
 
+**La testata.** In cima alla pagina c'e' tutta (barra dell'avviso, titolo, sottotitolo, menu); scorrendo, titolo e
+sottotitolo escono dallo schermo e resta solo la barra gialla del menu, appiccicata in alto (`position: sticky`, nessun
+salto di layout), con un piccolo «Peck Tracker» a sinistra su schermi larghi (da 720 px). Sul telefono il menu scorre in
+orizzontale. `app.js` misura l'altezza di titolo e sottotitolo (`--cima`) e mette la classe `compatta` alla testata;
+con `prefers-reduced-motion` il nome compare senza animazione. L'avviso resta nella testata intera e nel piede.
+
 Per vederlo sul computer: `python -I -m http.server 8000 --directory docs`, poi
 http://127.0.0.1:8000/ (aprire `index.html` direttamente non funziona: i vini si leggono con `fetch`).
 Per controllare che funzioni anche sotto un prefisso: `python -I -m http.server 8001`
 dalla cartella `peck-tracker` e aprire http://127.0.0.1:8001/docs/.
+
+## Aggiornamento automatico
+
+Ogni lunedi' alle 06:00 UTC (07:00 o 08:00 in Italia), e a mano dalla scheda *Actions* di GitHub («Run workflow»),
+il workflow `.github/workflows/aggiorna.yml` lancia `src/aggiorna_settimanale.py`: rilegge le fonti pubbliche che si
+possono riscaricare, riscrive il sito con `python -I src/sito.py` e, **solo se qualcosa e' cambiato**, fa un commit
+«Aggiornamento settimanale dei prezzi (data)» su `main` (GitHub Pages ripubblica da solo). Python 3.12, `requests` e
+`beautifulsoup4`; il job ha un limite di 60 minuti. Lo stesso programma si puo' lanciare sul proprio computer
+(`python -I src/aggiorna_settimanale.py`; `--solo winerim,tannico` per fare solo alcuni passi). Funziona senza
+`data/locale/` e senza `archivio/`, che su GitHub non ci sono.
+
+| Passo | Cosa rilegge | Come |
+| --- | --- | --- |
+| `winerim` | la carta dei vini: `vini.csv`, `cantine.csv`, `formati.csv` | `src/vini.py --dettagli`: l'elenco (31 pagine, 2 s di pausa) si riscarica sempre; la scheda di dettaglio solo per i vini **nuovi** (per gli altri si riusano i dati gia' in `vini.csv`) |
+| `tannico` | il catalogo Tannico e gli abbinamenti: `tannico.csv` | `src/tannico.py scarica` (catalogo e sitemap sempre nuovi) e `abbina` |
+| `voti_tannico` | i voti dalle schede Tannico: `tannico_voti.csv` | `src/tannico.py voti`: si scaricano solo le schede degli indirizzi abbinati che non ci sono ancora (3 s di pausa); `data_raccolta` e' il giorno in cui la scheda e' stata scaricata |
+| `confronto_vini` | confronto prezzi Peck / Tannico al litro: `confronto/vini_tannico.csv` | `src/confronto_vini.py` (col catalogo appena scaricato) |
+| `prezzi_produttori` | prezzi dei produttori nei confronti del cibo: `confronto/risultati_*.csv` | `src/aggiorna_prezzi_produttori.py`, vedi sotto |
+| `voti_aperti` | `voti_aperti.csv` (Wine Enthusiast, X-Wines) | `src/voti_aperti.py abbina`, **solo se** i dataset sono su disco (nella cache); altrimenti il file resta com'e'. I dataset non cambiano: per averli sul runner una volta, «Run workflow» con *scarica_voti_aperti* |
+| `voti_enoteche` | `voti_enoteche.csv` (voti dai negozi) | **spento** finche' non si imposta la variabile del repository `VOTI_ENOTECHE=si` (o si spunta *voti_enoteche* in «Run workflow»); solo schede nuove, mai Berry Bros & Rudd (ha una finestra oraria) |
+| `foto_shop` | le pagine dello shop Peck da cui `sito.py` prende le foto | `src/fetch.py` (10 s di pausa, circa 10 minuti) **solo se mancano** in `data/raw/`, cioe' su un computer pulito o con la cache persa |
+| `sito` | tutto `docs/` | `src/sito.py`; se questo passo fallisce il job si ferma e non pubblica niente |
+
+**Cosa NON si aggiorna da solo:** i prezzi del delivery di Peck (serve il login: si salvano a mano e si rilancia
+`src/delivery_dispensa.py`), le pagine dello shop Peck e i passi 1 e 2 (`extract.py`, `aziende.csv`), il controllo dei
+link, i bolli CE, e gli abbinamenti fatti a mano. Il sito resta una fotografia: i prezzi di Peck del delivery, per esempio,
+sono sempre quelli del 25 ottobre 2026.
+
+**Regole di sicurezza.** Un sito che non risponde non ferma gli altri: il passo e' segnato «errore» nel riepilogo
+(*Summary* del job) e si va avanti. Se un passo fallisce, o se i suoi file nuovi hanno meno del 90% delle righe dei
+vecchi, i file vecchi tornano al loro posto (per esempio se Winerim restituisce un elenco vuoto). Le pagine di elenco di
+Winerim e di Tannico si riscaricano da capo ogni volta, ma se lo scarico non riesce restano quelle della volta prima.
+Il tempo e' diviso fra i passi (50 minuti in tutto): un passo a cui non resta tempo si salta e al sito si lasciano sempre
+8 minuti; la volta dopo si riparte da dove si era arrivati.
+
+**La cache.** `data/raw/` non e' in git (sono scaricamenti): il workflow ne salva una parte (`winerim`, `tannico`,
+`voti`, le pagine dello shop) con `actions/cache` alla fine di ogni esecuzione e la rimette all'inizio della
+successiva. Cosi' si scaricano solo le novita'. Se la cache va persa (GitHub la cancella dopo 7 giorni senza uso) la
+volta dopo il lavoro e' piu' lungo ma il risultato e' lo stesso: le schede dei vini non si riscaricano (i dati sono gia' in
+`vini.csv`), mentre le circa 190 schede Tannico (10 minuti) e le pagine dello shop Peck (10 minuti) si.
+
+### I prezzi dei produttori (`src/aggiorna_prezzi_produttori.py`)
+
+Per ogni riga di `data/confronto/risultati_*.csv` che ha un `url_produttore`, un prezzo e una somiglianza «stesso prodotto» o
+«molto simile», rilegge il prezzo corrente dalla pagina del prodotto e aggiorna sul posto `prezzo_produttore`,
+`prezzo_produttore_al_kg`, `differenza_pct` (Peck rispetto al produttore, con il prezzo di Peck che non cambia) e `data`
+(il giorno in cui il prezzo e' stato riletto, anche se e' uguale). Come legge il prezzo, nell'ordine: **Shopify**
+(`<indirizzo>.json`, poi `.js`), **WooCommerce** (API pubblica dello store, per slug), altrimenti il **JSON-LD** (`Offer`)
+della pagina. Se il prodotto ha piu' formati sceglie quello con lo stesso peso della riga o quello che aveva gia' quel
+prezzo; nel dubbio la riga non si tocca. Una variazione oltre -50% / +100% non si applica (si segnala nel log). Ogni
+prezzo cambiato finisce in `data/confronto/storico_prezzi.csv` (`data`, `url`, `prezzo_vecchio`, `prezzo_nuovo`).
+
+- **robots.txt**, riletto per ogni sito a ogni esecuzione: si rispetta il gruppo `*` e anche le sezioni dedicate agli agenti
+  AI di Anthropic (ClaudeBot, Claude-Web, Claude-User, Claude-SearchBot, anthropic-ai): se una vieta la pagina il sito si
+  salta, senza cambiare User-Agent. Si rispetta il Crawl-delay; un robots.txt che non risponde (errore del server) vuol
+  dire che il sito si salta. `fornofollador.it` e `casaiuorio.it` si saltano sempre.
+- 2 secondi di pausa fra le richieste, un sito alla volta, User-Agent «peck-tracker research; non-commercial». Con 403 o
+  429 persistenti quel sito si salta fino alla settimana dopo. Niente login, niente aggiramento dei blocchi.
+- Un sito spento lascia la riga com'e' (con la sua vecchia `data`), cosi' si vede che non e' stata riletta.
+- Prova a secco: `python -I src/aggiorna_prezzi_produttori.py --solo-controllo --limite 5` (non scrive niente).
 
 ## Come rifare tutto
 

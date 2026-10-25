@@ -1,10 +1,42 @@
 /* Peck Tracker – il poco JavaScript che serve.
-   Le pagine sono già complete in HTML: qui ci sono solo
+   0. la testata: in cima c'è tutta, scorrendo restano solo il menu (sticky) e un piccolo «Peck Tracker» a sinistra;
    1. i filtri delle liste (Dispensa, Box, Produttori, Enoteca), con lo stato nell'indirizzo (?q=...&cat=...)
       così "Indietro" riporta alla stessa lista filtrata;
    2. il passaggio Schede / Elenco (?vista=elenco);
    3. l'elenco dei vini dell'enoteca, che si legge da vini.json;
    4. il riquadro al posto di una foto che non si carica. */
+
+/* ---------- 0. testata ---------- */
+(() => {
+  'use strict';
+  const testata = document.getElementById('testata');
+  const menu = testata && testata.querySelector('.menu');
+  if (!testata || !menu) return;
+  const avviso = document.querySelector('.avviso');
+  let cima = 0, compatta = false;
+
+  // l'altezza di quello che sta sopra il menu (titolo e sottotitolo): lo spazio che esce dallo schermo
+  const misura = () => {
+    cima = menu.parentNode.offsetTop;
+    testata.style.setProperty('--cima', cima + 'px');
+    aggiorna();
+  };
+  const aggiorna = () => {
+    const dove = (avviso ? avviso.offsetHeight : 0) + cima;   // scroll a cui il titolo è uscito del tutto
+    const y = window.scrollY;
+    const vuole = compatta ? y > dove - 40 : y > dove - 2;     // un po' di margine, per non far lampeggiare
+    if (vuole !== compatta) { compatta = vuole; testata.classList.toggle('compatta', vuole); }
+  };
+  window.addEventListener('scroll', aggiorna, { passive: true });   // poche operazioni: non serve rimandarle
+  window.addEventListener('resize', misura);
+  if (window.ResizeObserver) new ResizeObserver(misura).observe(testata);   // per esempio quando arriva il logo (solo in locale)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(misura);
+  misura();
+  // sul telefono il menu scorre: la voce della pagina corrente si porta in vista
+  const corrente = menu.querySelector('[aria-current="page"]');
+  if (corrente && menu.scrollWidth > menu.clientWidth) menu.scrollLeft = Math.max(0, corrente.offsetLeft - 16);
+})();
+
 (() => {
   'use strict';
 

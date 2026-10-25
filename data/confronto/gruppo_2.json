@@ -1,0 +1,123 @@
+[
+ {
+  "azienda": "Walcor Chocolate S.r.l.",
+  "sito": "https://pernigotti.it/walcor",
+  "link_shop": "",
+  "prodotti": [
+   "MONETA DI CIOCCOLATO PECK GR.50"
+  ]
+ },
+ {
+  "azienda": "Pianetta di Barbieri & C. s.n.c.",
+  "sito": "https://www.fruttacanditabarbieri.it",
+  "link_shop": "",
+  "prodotti": [
+   "RONDELLE DI ARANCIA NAVEL CANDITE RICOPERTE DI CIOCCOLATO 70% GR 160",
+   "MOSTARDA DI FRUTTA CANDITA 500 g",
+   "MARRONCINI CANDITI RICOPERTI DI CIOCCOLATO 70% GR 110",
+   "MARRONI AL NATURALE 400 g"
+  ]
+ },
+ {
+  "azienda": "Prodotti Gianduja Torino S.r.l.",
+  "sito": "https://www.prodottigianduja.it",
+  "link_shop": "https://www.prodottigiandujatorino.it/",
+  "prodotti": [
+   "GIANDUIOTTI 300 g",
+   "CREMA ALLA NOCCIOLA 200 G",
+   "CREMA CIOCCOLATO E ARANCIA 200 G"
+  ]
+ },
+ {
+  "azienda": "Relanghe S.r.l.",
+  "sito": "https://relanghe.it",
+  "link_shop": "https://shop.ceretto.com/",
+  "prodotti": [
+   "TORRONE FRIABILE CON MANDORLE 250 g",
+   "TORRONE MORBIDO CON MANDORLE, PISTACCHI E CANDITI 250 g",
+   "TORRONE FRIABILE RICOPERTO DI CIOCCOLATO FONDENTE 250 g",
+   "TORRONCINI ASSORTITI IN LATTA GR 300"
+  ]
+ },
+ {
+  "azienda": "Tartuflanghe S.r.l.",
+  "sito": "https://www.tartuflanghe.com",
+  "link_shop": "https://shop.tartuflanghe.com/",
+  "prodotti": [
+   "TARTUFINI NERI DI CIOCCOLATO 50 g",
+   "TAGLIATELLE ALL'UOVO CON TARTUFO STESE A MANO 250 g"
+  ]
+ },
+ {
+  "azienda": "Apicoltura Brezzo S.r.l.",
+  "sito": "https://www.brezzo.it",
+  "link_shop": "https://www.brezzo.it/negozio-on-line/",
+  "prodotti": [
+   "NOCCIOLE TOSTATE E MIELE D'ACACIA 230 g",
+   "NOCI E MIELE DI ACACIA 230 g",
+   "MIELE DI LIMONE 250 g"
+  ]
+ },
+ {
+  "azienda": "Azienda Agricola San Salvatore 1988 (di Pagano Giuseppe; P.IVA 04111650653)",
+  "sito": "https://www.sansalvatore1988.it",
+  "link_shop": "",
+  "prodotti": [
+   "CARCIOFINI MIGNON IN OLIO EXTRA VERGINE DI OLIVA 190 g"
+  ]
+ },
+ {
+  "azienda": "Sala Cereali S.r.l.",
+  "sito": "https://www.salacereali.it",
+  "link_shop": "https://www.salacereali.it/negozio/",
+  "prodotti": [
+   "ZUPPA DI LEGUMI 500 g"
+  ]
+ },
+ {
+  "azienda": "Itineri S.r.l.",
+  "sito": "https://legu.it/",
+  "link_shop": "https://legu.it/collections/all",
+  "prodotti": [
+   "GRANOLA DI LEGUMI 200 GR."
+  ]
+ },
+ {
+  "azienda": "Cárnicas Joselito, S.A.",
+  "sito": "https://joselito.com/",
+  "link_shop": "https://joselito.com/",
+  "prodotti": [
+   "JAMÓN IBÉRICO GRAN RISERVA JOSELITO AFFETTATO 70 g",
+   "PALETA IBÉRICA GRAN RISERVA JOSELITO AFFETTATA 70 g",
+   "JAMÓN IBÉRICO GRAN RISERVA JOSELITO AFFETTATO 70 g",
+   "PALETA IBÉRICA GRAN RISERVA JOSELITO AFFETTATA 70 g"
+  ]
+ },
+ {
+  "azienda": "Nonino Distillatori S.r.l.",
+  "sito": "https://www.grappanonino.it",
+  "link_shop": "",
+  "prodotti": [
+   "AMARO QUINTESSENTIA NONINO 70 cl",
+   "GRAPPA ANTICA CUVÉE BARRICATA NONINO 70 CL"
+  ]
+ },
+ {
+  "azienda": "Giacinto Callipo Conserve Alimentari S.r.l.",
+  "sito": "https://www.callipo.com",
+  "link_shop": "https://shop.callipo.com",
+  "prodotti": [
+   "FILETTI DI VENTRESCA DI TONNO ALL'OLIO DI OLIVA PECK 200 g",
+   "GRANCHIO REALE ROSSO AL NATURALE 400 G.",
+   "FILETTI DI TONNO ALL'OLIO DI OLIVA 200 g"
+  ]
+ },
+ {
+  "azienda": "Distillerie Berta S.r.l. (P.IVA 01283390050)",
+  "sito": "https://www.distillerieberta.it",
+  "link_shop": "https://www.distillerieberta.it/prodotti/",
+  "prodotti": [
+   "GIN PECK 43% 50 CL"
+  ]
+ }
+]

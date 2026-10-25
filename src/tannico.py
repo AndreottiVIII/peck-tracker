@@ -22,6 +22,7 @@ import re
 import sys
 import time
 import unicodedata
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -528,7 +529,7 @@ def scrivi_voto(nome, valore, scala):
 def voti():
     with open(USCITA, encoding="utf-8-sig", newline="") as f:
         righe = [r for r in csv.DictReader(f) if r["corrispondenza"] in ("esatta", "annata diversa")]
-    cache, uscita = {}, []
+    cache, uscita, quando = {}, [], {}
     senza_file = 0
     for r in righe:
         url = r["url_tannico"]
@@ -536,6 +537,10 @@ def voti():
             f = PRODOTTI / (handle_di(url) + ".html")
             cache[url] = (leggi_scheda(f.read_bytes().decode("utf-8", errors="replace"))
                           if f.exists() else None)
+            # data di raccolta = giorno in cui la scheda e' stata scaricata (data del file): con
+            # l'aggiornamento settimanale le schede vecchie tengono la loro data
+            quando[url] = (datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")
+                           if f.exists() else DATA_RACCOLTA)
         dati = cache[url]
         if dati is None:
             senza_file += 1
@@ -547,7 +552,7 @@ def voti():
             "corrispondenza": r["corrispondenza"],
             "punteggio_tannico": tannico if tannico is not None else "",
             "voti_critici": "; ".join(scrivi_voto(*c) for c in critici),
-            "n_critici": len(critici), "data_raccolta": DATA_RACCOLTA})
+            "n_critici": len(critici), "data_raccolta": quando[url]})
     campi = ["id", "url_tannico", "annata_tannico", "corrispondenza", "punteggio_tannico",
              "voti_critici", "n_critici", "data_raccolta"]
     with open(USCITA_VOTI, "w", encoding="utf-8-sig", newline="") as f:

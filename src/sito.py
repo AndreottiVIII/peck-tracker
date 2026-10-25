@@ -1241,7 +1241,7 @@ STATI_TESTO = {"certa": "certa", "probabile": "probabile", "non trovata": "non t
 TIPI_CHIAVE = {"indirizzo": "Indirizzo", "bollo_ce": "Bollo CE", "produttore": "Produttore nominato"}
 MENU = [("dispensa", "Dispensa", "dispensa/"), ("box", "Box regalo", "box/"),
         ("produttori", "Produttori", "produttori/"), ("enoteca", "Enoteca", "enoteca/"),
-        ("come-funziona", "Come funziona", "come-funziona/")]
+        ("occasioni", "Occasioni", "occasioni/"), ("come-funziona", "Come funziona", "come-funziona/")]
 GIALLO_PECK = "#FFCD45"    # --giallo-peck nel CSS di peck.it
 MARRONE_PECK = "#5E4824"   # --marrone-peck nel CSS di peck.it
 
@@ -1397,7 +1397,7 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
 
 <p class="avviso" role="note">{H(AVVISO)}</p>
 
-<header class="testata">
+<header class="testata" id="testata">
   <div class="contenitore">
     <div class="marchio" id="marchio">
       <div class="marchio-testo">
@@ -1405,7 +1405,10 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
         <p class="sotto-logo">Chi fa davvero quello che vende Peck, e dove</p>
       </div>
     </div>
-    <nav aria-label="Sezioni del sito" class="menu">{menu}</nav>
+    <div class="barra">
+      <a class="mini-logo" href="{r}" aria-hidden="true" tabindex="-1">Peck Tracker</a>
+      <nav aria-label="Sezioni del sito" class="menu">{menu}</nav>
+    </div>
   </div>
 </header>
 
@@ -1589,11 +1592,11 @@ def voce_prodotto(it, az, r):
     province = "|" + "|".join(sorted({o["provincia"] for o in it["origini"] if o["provincia"]})) + "|"
     dove_html = f'<span class="col-c">{H(dove)}</span>' if dove else '<span class="col-c"></span>'
     return (f'<li class="it" data-k="{H(it["k"])}" data-c="{H(it["categoria"])}" data-g="{H(regioni)}" '
-            f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}">'
+            f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}" data-cp="{1 if it.get("chip") else 0}">'
             f'<a class="scheda" href="{r}prodotto/{it["id"]}/">'
             f'{immagine_cibo(it, r)}'
             f'<div class="corpo"><div class="col-a"><span class="cat">{H(cap(it["categoria"]))}</span>'
-            f'<p class="nome">{H(it["nome"])}</p>{prezzo_scheda(it)}</div>'
+            f'<p class="nome">{H(it["nome"])}</p>{prezzo_scheda(it)}{chip_confronto(it)}</div>'
             f'<p class="meta"><span class="col-b">{chi}</span>{dove_html}</p>'
             f'<div class="col-d">{badge(stato)}</div></div></a></li>')
 
@@ -1611,10 +1614,11 @@ def pagina_dispensa(dispensa, az, r_rel, home=False):
         ctl_select("prov", "Provincia", [(p, p, g) for p, g in prov], "p", "multi", "Tutte", dip="reg") +
         ctl_select("cert", "Quanto siamo sicuri", [(s, cap(STATI_TESTO[s])) for s in
                                                     ("certa", "probabile", "peck", "non trovata", "nessuna")], "s") +
-        ctl_spunta("shop", "Il produttore ha uno shop online", "n"))
+        ctl_spunta("shop", "Il produttore ha uno shop online", "n") +
+        ctl_spunta("cp", "Con confronto prezzi", "cp"))
     corpo = f"""<section>
 <h1 class="titolo-pagina">Dispensa</h1>
-<p class="intro">Ogni prodotto alimentare che Peck vende online, una volta sola anche se sta in più box. Per ognuno: chi lo fa e dove, e quanto siamo sicuri.</p>
+<p class="intro">Ogni prodotto alimentare che Peck vende online, una volta sola anche se sta in più box. Per ognuno: chi lo fa e dove, e quanto siamo sicuri. Dove abbiamo trovato lo stesso prodotto sul sito del produttore c’è anche il confronto dei prezzi.</p>
 {form_filtri("Filtri: dispensa", ctl_cerca("Cerca un prodotto, un’azienda o un paese", "per esempio: panettone, Pordenone, tartufo"), campi)}
 {barra_lista(conta_testo(len(dispensa), "prodotto", "prodotti"))}
 {lista_html(["Prodotto", "Chi lo fa", "Dove", "Quanto siamo sicuri"], voci, "prodotto", "prodotti")}
@@ -1717,6 +1721,7 @@ def pagina_prodotto(it, az, boxes, r):
 <section class="sezione"><h2>Chi lo fa e dove</h2>
 {"".join(blocchi) if blocchi else "<p>Nessuna indicazione.</p>"}
 </section>
+{blocco_confronto(it, az)}
 <section class="sezione" id="box"><h2>{"Dove lo trovi su Peck" if len(in_box) == 1 else f"Lo trovi in {len(in_box)} pagine di Peck"}</h2>
 <ul class="griglia">{"".join(f"<li>{scheda_box_corta(b, r)}</li>" for b in in_box)}</ul>
 <p class="meta" style="margin-top:1rem">Le pagine qui sopra sono le nostre; da ognuna puoi andare alla pagina originale di Peck.</p>
@@ -2134,7 +2139,7 @@ def radar_svg(prof):
     return (f'<svg class="radar" viewBox="-25 0 250 176" aria-hidden="true" focusable="false">{anelli}{assi}{area}{etich}</svg>')
 
 
-def pagina_vino(w, V, r, correlati):
+def pagina_vino(w, V, r, correlati, CV):
     c = w["cantina"]
     M = V["meta"]
     link_winerim = w.get("l") or f"{LINK_WINERIM_PREFISSO}{w['id']}/{w['s']}"
@@ -2209,6 +2214,7 @@ def pagina_vino(w, V, r, correlati):
 <p class="meta">Vivino e Wine-Searcher aprono una ricerca sui loro siti per questo vino, Tannico la scheda o una ricerca. Di Vivino e Wine-Searcher non copiamo i voti.</p>
 </div>
 </div>
+{confronto_vino(w, CV)}
 {blocco_voti(w)}
 {profilo}
 {formati}
@@ -2249,10 +2255,384 @@ def vini_correlati(vini):
 
 
 # ---------------------------------------------------------------------------
+# Confronto prezzi: Peck / produttore (cibo) e Peck / Tannico (vini)
+#   cibo:  data/confronto/risultati_*.csv  (tutti, letti dinamicamente)
+#   vini:  data/confronto/vini_tannico.csv (scritto da src/confronto_vini.py)
+# ---------------------------------------------------------------------------
+
+SOGLIA_OCCASIONE = 5.0       # «Angolo delle occasioni»: Peck costa meno che altrove, o al massimo il 5% in piu'
+N_COSTA_DI_PIU = 20          # quante righe nel riquadro «Dove Peck costa di piu'»
+SIM_PESO = {"stesso prodotto": 3, "molto simile": 2, "simile": 1, "non verificato": 0}   # «non trovato»: mai
+SIM_BREVE = {"stesso prodotto": "Stesso prodotto", "molto simile": "Molto simile", "simile": "Simile",
+             "non verificato": "Da verificare a mano"}
+SIM_CLASSE = {"stesso prodotto": "stesso", "molto simile": "molto", "simile": "simile", "non verificato": "mano"}
+SIM_SPIEGA = {
+    "stesso prodotto": "Stesso produttore, stesso tipo di prodotto e stesso formato, con ingredienti uguali o quasi.",
+    "molto simile": "Stesso produttore e stesso tipo di prodotto, ma il formato o la ricetta sono un po’ diversi "
+                    "(la nota qui sotto dice come).",
+    "simile": "Stesso produttore, ma un prodotto della stessa famiglia e non lo stesso: il confronto è solo indicativo.",
+}
+SOLO_BOX = "Da Peck si trova solo nelle box: non c’è un prezzo del prodotto singolo da confrontare."
+A_MANO = "Confronto da fare a mano: il sito del produttore non accetta agenti automatici."
+DATA_CONFRONTO_DEFAULT = "2026-10-25"
+
+
+def num_conf(s):
+    """'+21.7' -> 21.7,  '37.93 (al litro)' -> 37.93,  '' -> None."""
+    m = re.search(r"[-+−]?\d+(?:[.,]\d+)?", s or "")
+    if not m:
+        return None
+    try:
+        return float(m.group().replace("−", "-").replace(",", "."))
+    except ValueError:
+        return None
+
+
+def unita_di(formato):
+    """'litro' se il formato e' in ml/cl/l, altrimenti 'kg'."""
+    f = (formato or "").lower()
+    if re.search(r"\d\s*(ml|cl|lt|l)\b", f) and not re.search(r"\d\s*(g|gr|kg)\b", f):
+        return "litro"
+    return "kg"
+
+
+def percento_testo(dp):
+    a = abs(dp)
+    if a >= 10:
+        return str(round(a))
+    return f"{a:.1f}".replace(".", ",").removesuffix(",0")
+
+
+def verdetto(dp):
+    """'Da Peck costa il 72% in più' / 'l’8% in meno' / 'lo stesso'."""
+    if dp is None:
+        return ""
+    if abs(dp) < 0.5:
+        return "Da Peck costa praticamente lo stesso"
+    p = percento_testo(dp)
+    art = "l’" if p[0] == "8" or p == "11" else "il "
+    return f"Da Peck costa {art}{p}% in {'più' if dp > 0 else 'meno'}"
+
+
+def chip_testo(dp):
+    if abs(dp) < 0.5:
+        return "≈ pari al produttore"
+    return f"{'+' if dp > 0 else '−'}{percento_testo(dp)}% vs produttore"
+
+
+def carica_confronti_cibo():
+    """Tutte le righe di data/confronto/risultati_*.csv, tranne «non trovato» (non si mostra mai)."""
+    out = []
+    for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv"))):
+        with open(f, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                sim = (r.get("somiglianza") or "").strip().lower()
+                if sim not in SIM_PESO:
+                    continue
+                c = {
+                    "nome_peck": (r["nome_peck"] or "").strip(), "chiave": (r["chiave_dispensa"] or "").strip(),
+                    "p_peck": num_conf(r["prezzo_peck"]), "f_peck": (r["formato_peck"] or "").strip(),
+                    "kg_peck": num_conf(r["prezzo_peck_al_kg"]),
+                    "azienda": (r["azienda"] or "").strip(), "nome_prod": (r["nome_produttore"] or "").strip(),
+                    "url": (r["url_produttore"] or "").strip(),
+                    "p_prod": num_conf(r["prezzo_produttore"]), "f_prod": (r["formato_produttore"] or "").strip(),
+                    "kg_prod": num_conf(r["prezzo_produttore_al_kg"]),
+                    "dp": num_conf(r["differenza_pct"]), "sim": sim,
+                    "ingr": (r["ingredienti_confrontati"] or "").strip().lower() == "si",
+                    "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip(),
+                    "ordine": len(out), "item": None,
+                }
+                if sim == "non verificato":
+                    c["p_peck"] = c["p_prod"] = c["dp"] = None     # nessun prezzo del produttore: niente da confrontare
+                if c["dp"] is None and c["kg_peck"] and c["kg_prod"]:
+                    c["dp"] = (c["kg_peck"] / c["kg_prod"] - 1) * 100
+                if c["dp"] is None and c["p_peck"] and c["p_prod"]:
+                    c["dp"] = (c["p_peck"] / c["p_prod"] - 1) * 100
+                # su che base e' calcolata la differenza (controlliamo che i numeri tornino)
+                c["base"] = ""
+                if c["dp"] is not None:
+                    if c["kg_peck"] and c["kg_prod"] and abs((c["kg_peck"] / c["kg_prod"] - 1) * 100 - c["dp"]) <= 0.6:
+                        u1, u2 = unita_di(c["f_peck"]), unita_di(c["f_prod"])
+                        c["base"] = f"al {u1}" if u1 == u2 else "al kg o al litro"
+                    elif c["p_peck"] and c["p_prod"] and abs((c["p_peck"] / c["p_prod"] - 1) * 100 - c["dp"]) <= 0.6:
+                        c["base"] = "per confezione"
+                c["confrontabile"] = c["dp"] is not None and c["p_peck"] is not None and c["p_prod"] is not None
+                out.append(c)
+    return out
+
+
+def collega_confronti(dispensa, az):
+    """Attacca a ogni prodotto della Dispensa i suoi confronti (prima per chiave_dispensa, poi per nome).
+    Le righe senza una pagina sulla Dispensa restano in 'senza_pagina'."""
+    righe = carica_confronti_cibo()
+    per_id = {d["id"]: d for d in dispensa}
+    per_nome = {nz(d["nome_originale"]): d for d in dispensa}
+    for d in dispensa:
+        d["confronti"], d["chip"] = [], None
+    for c in righe:
+        c["item"] = per_id.get(c["chiave"]) or per_nome.get(nz(c["nome_peck"]))
+        if c["item"]:
+            c["item"]["confronti"].append(c)
+    for d in dispensa:
+        d["confronti"].sort(key=lambda c: (-SIM_PESO[c["sim"]], c["ordine"]))
+        d["chip"] = next((c for c in d["confronti"] if SIM_PESO[c["sim"]] >= 2 and c["confrontabile"]), None)
+    return righe
+
+
+def sito_produttore(c, az):
+    """Link al sito (o shop) del produttore, per le righe «da verificare a mano» che non hanno un indirizzo."""
+    k = nz(c["azienda"])
+    cand = None
+    for z in az.values():
+        if z["trovata"] and k and k in (nz(z["ragione"]), nz(z["nome"])):
+            cand = z
+            break
+    if cand is None and c["item"]:
+        cand = next((az[a] for a in c["item"]["aziende"] if a in az and az[a]["trovata"]), None)
+    if cand is None:
+        return ""
+    return cand["link_shop"] if LINK.buono(cand["link_shop"]) else cand["sito"]
+
+
+def prezzo_formato(prezzo, formato):
+    if prezzo is None:
+        return ""
+    formato = re.sub(r"\s*\(([^)]*)\)", r", \1", formato or "").strip()   # niente parentesi dentro la parentesi
+    return euro_it(prezzo) + (f' <span class="meta">({H(formato)})</span>' if formato else "")
+
+
+def al_kg_testo(valore, formato):
+    if not valore:
+        return ""
+    return f'<span class="meta">{euro_it(valore)} al {unita_di(formato)}</span>'
+
+
+def blocco_confronto(it, az):
+    """Il riquadro «Dal produttore» nella pagina di un prodotto."""
+    confronti = it.get("confronti") or []
+    if not confronti:
+        return ""
+    schede = []
+    for c in confronti:
+        sim = c["sim"]
+        classe = SIM_CLASSE[sim]
+        badge_sim = f'<span class="badge-sim s-{classe}">{H(SIM_BREVE[sim])}</span>'
+        if sim == "non verificato":
+            link = ext(sito_produttore(c, az), "Vai al sito del produttore", "bottone piccolo")
+            schede.append(
+                f'<div class="confronto s-{classe}"><p>{badge_sim}</p>'
+                f'<h3>{H(c["azienda"])}</h3>'
+                f'<p>{H(A_MANO)}</p>'
+                + (f'<div class="gruppo-bottoni">{link}</div>' if link else "") + '</div>')
+            continue
+        # i due prezzi
+        lato_peck = ""
+        if c["p_peck"] is not None:
+            lato_peck = (f'<div class="lato"><p class="et">Da Peck</p><p class="cifra">{prezzo_formato(c["p_peck"], c["f_peck"])}</p>'
+                         f'<p>{al_kg_testo(c["kg_peck"], c["f_peck"])}</p></div>')
+        lato_prod = ""
+        if c["p_prod"] is not None:
+            lato_prod = (f'<div class="lato"><p class="et">Dal produttore</p><p class="cifra">{prezzo_formato(c["p_prod"], c["f_prod"])}</p>'
+                         f'<p>{al_kg_testo(c["kg_prod"], c["f_prod"])}</p></div>')
+        prezzi = f'<div class="conf-prezzi">{lato_peck}{lato_prod}</div>' if (lato_peck or lato_prod) else ""
+        if c["p_peck"] is None and c["p_prod"] is not None:
+            esito = f'<p class="conf-solo-box">{H(SOLO_BOX)}</p>'
+        elif c["confrontabile"]:
+            dp = c["dp"]
+            segno = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
+            base = f' <span class="meta">({H(c["base"])})</span>' if c["base"] else ""
+            esito = f'<p class="conf-verdetto v-{segno}">{H(verdetto(dp))}{base}</p>'
+        else:
+            esito = ""
+        ingr = ('<p class="conf-ingr"><span class="spunta-ok" aria-hidden="true">✓</span> Ingredienti confrontati</p>'
+                if c["ingr"] else '<p class="conf-ingr meta">Ingredienti non confrontati.</p>')
+        link = ext(c["url"], "Compra dal produttore", "bottone piccolo")
+        attenzione = ""
+        if re.search(r"offerta|saldi|promozion", c["nota"], re.I):
+            attenzione += '<p class="meta attenzione">Attenzione: il prezzo del produttore è in offerta (vedi le note del confronto).</p>'
+        if re.search(r"risulta non disponibile|non disponibile online|contattare per acquistare", c["nota"], re.I):
+            attenzione += ('<p class="meta attenzione">Attenzione: sul sito del produttore il prodotto potrebbe non essere '
+                           'acquistabile online (vedi le note del confronto).</p>')
+        nota = (f'<details><summary>Note del confronto</summary><p>{H(c["nota"])}</p></details>' if c["nota"] else "")
+        nome_prod = c["nome_prod"] or it["nome"]
+        schede.append(
+            f'<div class="confronto s-{classe}"><p>{badge_sim}</p>'
+            f'<h3>{H(nome_prod)}</h3><p class="meta">{H(c["azienda"])}</p>'
+            f'<p class="conf-spiega">{H(SIM_SPIEGA[sim])}</p>'
+            f'{prezzi}{esito}{ingr}{attenzione}'
+            f'<div class="gruppo-bottoni">{link}</div>'
+            f'<p class="meta">Prezzo visto il {data_lunga(c["data"])}.</p>{nota}</div>')
+    return (f'<section class="sezione" id="dal-produttore"><h2>Dal produttore</h2>'
+            f'<p class="meta">Lo stesso prodotto (o uno simile) sul sito di chi lo fa. Sono i prezzi scritti sui siti il giorno indicato, '
+            f'spese di spedizione escluse; cambiano. Il dettaglio è in «Come funziona». Qui nessuno vende niente.</p>'
+            + "".join(schede) + '</section>')
+
+
+def chip_confronto(it):
+    c = it.get("chip")
+    if not c:
+        return ""
+    dp = c["dp"]
+    classe = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
+    tit = f"{verdetto(dp)} ({c['base'] or 'confronto'}) rispetto a {c['azienda']}: {SIM_BREVE[c['sim']].lower()}"
+    return f' <span class="chip-conf c-{classe}" title="{H(tit)}">{H(chip_testo(dp))}</span>'
+
+
+# --- vini ------------------------------------------------------------------
+
+def carica_confronto_vini():
+    """data/confronto/vini_tannico.csv -> {id vino: riga} per le sole righe «confrontabile = si»."""
+    f = DATI / "confronto" / "vini_tannico.csv"
+    if not f.exists():
+        return {}
+    out = {}
+    with open(f, encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            if (r["confrontabile"] or "").strip().lower() != "si":
+                continue
+            c = {
+                "id": r["id"], "p_peck": num_conf(r["prezzo_peck"]), "p_tan": num_conf(r["prezzo_tannico"]),
+                "l_peck": num_conf(r["litri_peck"]), "l_tan": num_conf(r["litri_tannico"]),
+                "pl_peck": num_conf(r["prezzo_peck_al_litro"]), "pl_tan": num_conf(r["prezzo_tannico_al_litro"]),
+                "dp": num_conf(r["differenza_pct"]), "a_peck": (r["annata_peck"] or "").strip(),
+                "a_tan": (r["annata_tannico"] or "").strip(), "url": (r["url_tannico"] or "").strip(),
+                "disp": (r["disponibile_tannico"] or "").strip().lower() == "si",
+                "data": (r["data"] or DATA_CONFRONTO_DEFAULT).strip(), "nota": (r["nota"] or "").strip(),
+            }
+            if c["dp"] is None and c["pl_peck"] and c["pl_tan"]:
+                c["dp"] = (c["pl_peck"] / c["pl_tan"] - 1) * 100
+            if c["dp"] is None or c["p_peck"] is None or c["p_tan"] is None:
+                continue
+            out[c["id"]] = c
+    return out
+
+
+def litri_testo(x):
+    return f"{litri_it(x)} L" if x is not None else ""
+
+
+def confronto_vino(w, CV):
+    """Il riquadro «Prezzi altrove» nella pagina di un vino (solo se il confronto con Tannico c'e')."""
+    c = CV.get(str(w["id"]))
+    if not c:
+        return ""
+    dp = c["dp"]
+    segno = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
+    annata = ""
+    if c["a_peck"] and c["a_tan"] and c["a_peck"] != c["a_tan"]:
+        annata = (f'<p class="meta">Annata: da Peck {H(c["a_peck"])}, su Tannico {H(c["a_tan"])} '
+                  f'(vicine, ma non la stessa).</p>')
+    if c["disp"]:
+        disp = '<p class="conf-ingr"><span class="spunta-ok" aria-hidden="true">✓</span> Disponibile su Tannico</p>'
+    else:
+        disp = ('<p class="conf-ingr meta">Oggi non disponibile su Tannico: il prezzo è l’ultimo che abbiamo visto '
+                'sulla sua scheda.</p>')
+    link = ext(c["url"], "Vedi su Tannico", "bottone piccolo")
+    lato_peck = (f'<div class="lato"><p class="et">Da Peck</p><p class="cifra">{euro_it(c["p_peck"])} '
+                 f'<span class="meta">({litri_testo(c["l_peck"])})</span></p>'
+                 + (f'<p><span class="meta">{euro_it(c["pl_peck"])} al litro</span></p>' if c["pl_peck"] else "") + '</div>')
+    lato_tan = (f'<div class="lato"><p class="et">Su Tannico</p><p class="cifra">{euro_it(c["p_tan"])} '
+                f'<span class="meta">({litri_testo(c["l_tan"])})</span></p>'
+                + (f'<p><span class="meta">{euro_it(c["pl_tan"])} al litro</span></p>' if c["pl_tan"] else "") + '</div>')
+    return (f'<section class="sezione" id="prezzi-altrove"><h2>Prezzi altrove</h2>'
+            f'<div class="confronto s-stesso"><p><span class="badge-sim s-stesso">Stesso vino, stesso formato</span></p>'
+            f'<div class="conf-prezzi">{lato_peck}{lato_tan}</div>'
+            f'<p class="conf-verdetto v-{segno}">{H(verdetto(dp))} <span class="meta">(al litro)</span></p>'
+            f'{annata}{disp}<div class="gruppo-bottoni">{link}</div>'
+            f'<p class="meta">Prezzi visti il {data_lunga(c["data"])}, entrambi con IVA; cambiano. Tannico è un negozio online di vino: '
+            f'non è affiliato a questo sito. Il confronto vale solo quando il vino, il formato e l’annata (al massimo 2 anni di scarto) '
+            f'sono gli stessi.</p></div></section>')
+
+
+# --- Angolo delle occasioni ------------------------------------------------
+
+def voci_confronto(righe, V, CV, r):
+    """Tutti i confronti che hanno due prezzi veri, cibo e vini insieme (solo vini con Tannico disponibile)."""
+    voci = []
+    for c in righe:
+        if SIM_PESO[c["sim"]] < 2 or not c["confrontabile"]:
+            continue
+        it = c["item"]
+        if it:
+            foto, href = immagine_cibo(it, r), f"prodotto/{it['id']}/"
+            nome = it["nome"]
+        else:
+            foto, href, nome = foto_html("", bello(c["nome_peck"])), "", bello(c["nome_peck"])
+        voci.append({
+            "tipo": "Cibo", "nome": nome, "foto": foto, "href": href, "dp": c["dp"], "sim": SIM_BREVE[c["sim"]],
+            "peck": prezzo_formato(c["p_peck"], c["f_peck"]),
+            "peck_u": al_kg_testo(c["kg_peck"], c["f_peck"]),
+            "fuori": prezzo_formato(c["p_prod"], c["f_prod"]),
+            "fuori_u": al_kg_testo(c["kg_prod"], c["f_prod"]),
+            "et_fuori": "Dal produttore", "dove": c["azienda"] or c["nome_prod"], "base": c["base"], "data": c["data"],
+        })
+    per_id = {str(w["id"]): w for w in V["vini"]}
+    for vid, c in CV.items():
+        w = per_id.get(vid)
+        if not w or not c["disp"]:
+            continue
+        voci.append({
+            "tipo": "Vino", "nome": nome_nome(w), "foto": foto_html(url_foto_vino(w), "Bottiglia: " + nome_nome(w), "vino"),
+            "href": f"vino/{w['d']}/", "dp": c["dp"], "sim": "Stesso vino, stesso formato",
+            "peck": f'{euro_it(c["p_peck"])} <span class="meta">({litri_testo(c["l_peck"])})</span>',
+            "peck_u": f'<span class="meta">{euro_it(c["pl_peck"])} al litro</span>' if c["pl_peck"] else "",
+            "fuori": f'{euro_it(c["p_tan"])} <span class="meta">({litri_testo(c["l_tan"])})</span>',
+            "fuori_u": f'<span class="meta">{euro_it(c["pl_tan"])} al litro</span>' if c["pl_tan"] else "",
+            "et_fuori": "Su Tannico", "dove": "Tannico", "base": "al litro", "data": c["data"],
+        })
+    return voci
+
+
+def riga_occasione(v, r):
+    dp = v["dp"]
+    segno = "pari" if abs(dp) < 0.5 else ("piu" if dp > 0 else "meno")
+    if abs(dp) < 0.5:
+        cifra, frase = "≈ 0%", "Da Peck costa praticamente lo stesso"
+    else:
+        cifra = f"{'+' if dp > 0 else '−'}{percento_testo(dp)}%"
+        frase = verdetto(dp)
+    nome = (f'<a href="{r}{v["href"]}">{H(v["nome"])}</a>' if v["href"] else H(v["nome"]))
+    foto = v["foto"]
+    base = f' <span class="meta">({H(v["base"])})</span>' if v["base"] else ""
+    pagina = (f'<a class="vai-pagina" href="{r}{v["href"]}">Vai alla pagina<span class="sr"> di {H(v["nome"])}</span></a>'
+              if v["href"] else "")
+    return (f'<li class="occ">{foto}'
+            f'<div class="occ-nome"><p class="cat">{H(v["tipo"])} · {H(v["sim"])}</p><p class="nome">{nome}</p><p class="meta">Confrontato con: {H(v["dove"])}</p>{pagina}</div>'
+            f'<div class="occ-prezzi"><div class="lato"><p class="et">Da Peck</p><p class="cifra">{v["peck"]}</p><p>{v["peck_u"]}</p></div>'
+            f'<div class="lato"><p class="et">{H(v["et_fuori"])}</p><p class="cifra">{v["fuori"]}</p><p>{v["fuori_u"]}</p></div></div>'
+            f'<div class="occ-diff v-{segno}"><p class="grande">{H(cifra)}</p><p class="meta">{H(frase)}{base}</p></div></li>')
+
+
+def pagina_occasioni(voci, r):
+    oggi_dati = max([v.get("data", "") for v in voci] + [DATA_CONFRONTO_DEFAULT])
+    occasioni = sorted((v for v in voci if v["dp"] <= SOGLIA_OCCASIONE), key=lambda v: (v["dp"], v["nome"]))
+    costano_di_piu = sorted(voci, key=lambda v: (-v["dp"], v["nome"]))[:N_COSTA_DI_PIU]
+    soglia = f"{SOGLIA_OCCASIONE:g}".replace(".", ",")
+    n_cibo = sum(1 for v in occasioni if v["tipo"] == "Cibo")
+    n_vino = sum(1 for v in occasioni if v["tipo"] == "Vino")
+    if occasioni:
+        elenco = '<ul class="occasioni">' + "".join(riga_occasione(v, r) for v in occasioni) + "</ul>"
+    else:
+        elenco = '<p class="vuoto">Per ora nessun prodotto passa la soglia.</p>'
+    corpo = f"""<section>
+<h1 class="titolo-pagina">Angolo delle occasioni</h1>
+<p class="intro">I prodotti che da Peck costano <strong>meno</strong> che altrove, o al massimo il <strong>{soglia}% in più</strong>, a parità di peso o di litri. Dentro ci sono solo i confronti sicuri: per il cibo lo stesso prodotto (o uno molto simile) sul sito di chi lo fa, per il vino la stessa bottiglia, dello stesso formato, su Tannico quando è disponibile. Sono {conta_testo(len(occasioni), "prodotto", "prodotti")} ({n_cibo} di cibo, {n_vino} di vino), dal più conveniente.</p>
+<p class="meta nota-ord">Confronto del {data_lunga(oggi_dati)}. I prezzi degli altri negozi si aggiornano in automatico una volta a settimana; i prezzi di Peck (servizio delivery e carta dell’enoteca) solo a mano, quindi possono essere più vecchi. La soglia (+{soglia}%) è una nostra scelta, non un giudizio su Peck: prezzi e formati cambiano, controlla sempre sulla pagina del negozio. Come si confronta: «<a href="{r}come-funziona/#confronto-prezzi">Come funziona</a>».</p>
+{elenco}
+<details class="costa-di-piu" id="costa-di-piu"><summary>Dove Peck costa di più ({len(costano_di_piu)} scarti maggiori)</summary>
+<p class="meta">Gli stessi confronti, al contrario: i {len(costano_di_piu)} casi in cui da Peck si paga di più rispetto a chi il prodotto lo fa o lo vende. Peck è una gastronomia di lusso: il prezzo comprende anche il negozio, il marchio e il servizio.</p>
+<ul class="occasioni">{"".join(riga_occasione(v, r) for v in costano_di_piu)}</ul>
+</details>
+</section>""", (f"Prodotti che da Peck costano meno che altrove, o al massimo il {soglia}% in più: cibo confrontato con il sito del produttore, "
+                 f"vino con Tannico. {AVVISO}")
+    return corpo
+
+
+# ---------------------------------------------------------------------------
 # Come funziona
 # ---------------------------------------------------------------------------
 
-def pagina_come_funziona(dispensa, box, produttori, V, M):
+def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV):
     conta = Counter(d["stato"] for d in dispensa)
     def _con(k):
         return sum(1 for w in V["vini"] if w.get("voti") and w["voti"][k])
@@ -2269,7 +2649,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
                if VOTI["en"] else "")
     n_delivery = sum(1 for d in dispensa if d.get("delivery"))
     n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else [])
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else [])
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -2296,6 +2676,27 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
     if link_tot:
         sezione_link = f"""<h2>I link ai negozi dei produttori</h2>
 <p>Il bottone «Compra dal produttore» porta al negozio online dell’azienda, non a noi: noi non vendiamo niente. Un programma (<code>src/controlla_link.py</code>) apre ogni link e controlla che risponda; il {data_lunga(LINK.data)} ne ha controllati {link_tot}: {link_ok} si aprono (alcuni li abbiamo controllati a mano perché il sito rifiuta i programmi), {link_rotti} sono rotti o domini in vendita e per {link_bloc} il controllo non è possibile con un programma (di solito perché il sito rifiuta i robot). Un link rotto non diventa mai un bottone; quelli sbagliati sono stati cercati a mano e corretti in <code>data/aziende.csv</code> (la colonna <code>nota</code> dice cosa è cambiato). I negozi cambiano: se un bottone non funziona, segnalacelo.</p>"""
+    conta_sim = Counter(c["sim"] for c in righe_conf)
+    n_conf_ok = sum(1 for d in dispensa if d.get("chip"))
+    n_item_conf = sum(1 for d in dispensa if d.get("confronti"))
+    n_produttori_conf = len({c["azienda"] for c in righe_conf if c["azienda"]})
+    n_vini_conf = len(CV)
+    n_vini_disp = sum(1 for c in CV.values() if c["disp"])
+    soglia_t = f"{SOGLIA_OCCASIONE:g}".replace(".", ",")
+    sezione_confronto = f"""<h2 id="confronto-prezzi">Confronto prezzi</h2>
+<p>Per molti prodotti sappiamo chi li fa. Quando quel produttore vende lo stesso prodotto (o uno molto simile) sul suo sito, ne scriviamo il prezzo accanto a quello di Peck; per i vini facciamo lo stesso con Tannico. È un confronto fra prezzi scritti sui siti, non una valutazione: quello che Peck aggiunge (negozio, marchio, selezione, consegna) non si misura qui.</p>
+<ul>
+<li><strong>Come si abbina.</strong> Prima si cerca il catalogo pubblico del produttore; poi si sceglie il prodotto con lo stesso tipo, lo stesso formato o il più vicino, e dove ci sono si confrontano gli ingredienti (etichetta del delivery di Peck contro scheda del produttore). Abbiamo guardato {n_produttori_conf} produttori, con {n_item_conf} prodotti della Dispensa che hanno almeno un esito da mostrare. Gli abbinamenti non sono verità ufficiali e possono sbagliare: nel dubbio si scende di livello.</li>
+<li><strong>I livelli di somiglianza.</strong> <em>Stesso prodotto</em>: stesso produttore, stesso tipo e stesso formato, ingredienti uguali o quasi ({conta_sim["stesso prodotto"]} confronti). <em>Molto simile</em>: stesso produttore e tipo, ma formato o ricetta un po’ diversi, e la nota dice come ({conta_sim["molto simile"]}). <em>Simile</em>: stesso produttore, prodotto della stessa famiglia, solo indicativo ({conta_sim["simile"]}). Se il prodotto non si trova sul sito del produttore, la riga non compare mai; quando non siamo sicuri non diciamo «stesso prodotto».</li>
+<li><strong>Il confronto è al chilo o al litro.</strong> I formati sono spesso diversi (un tubetto da 30 g contro uno da 40 g), quindi la differenza si calcola sul prezzo al kg o al litro: «Da Peck costa il 72% in più» vuol dire che, a parità di peso, Peck costa il 72% in più. Quando i formati non sono confrontabili (per esempio 580 ml contro 450 g) lo diciamo e la differenza è per confezione. Il bollino «+72% vs produttore» sulle schede della Dispensa compare solo per «stesso prodotto» e «molto simile» con due prezzi veri; il filtro «Con confronto prezzi» mostra i {n_conf_ok} prodotti che lo hanno.</li>
+<li><strong>Prodotti che si trovano solo nelle box.</strong> Molti prodotti Peck non si comprano da soli: stanno solo dentro le box, e non hanno un prezzo singolo. Di quelli mostriamo solo il prezzo del produttore e scriviamo «Da Peck si trova solo nelle box».</li>
+<li><strong>Robots.txt e agenti automatici.</strong> Prima di scaricare un catalogo si legge il <code>robots.txt</code> del produttore e lo si rispetta, comprese le sezioni che vietano i programmi di intelligenza artificiale. Due produttori li vietano per nome: Panificio Follador e Casa Iuorio. Non li abbiamo confrontati, nemmeno cambiando il nome del programma: le loro righe dicono «confronto da fare a mano», con il link al loro sito, e i dati scaricati prima di accorgerci sono stati cancellati. Se un sito non ha un negozio con i prezzi, la riga non c’è.</li>
+<li><strong>I vini con Tannico.</strong> Per ogni formato di Peck cerchiamo fra i prodotti di Tannico lo stesso vino (nome uguale, stessa cantina), con gli stessi litri e un’annata che disti al massimo 2 anni; prezzi con IVA, divisi per i litri. Sono {n_vini_conf} bottiglie confrontabili, {n_vini_disp} delle quali disponibili su Tannico. Il prezzo di Tannico si vede nella pagina del vino («Prezzi altrove»). Se la bottiglia non è disponibile su Tannico lo diciamo e non la mettiamo nell’Angolo delle occasioni.</li>
+<li><strong>L’Angolo delle occasioni.</strong> Elenca i confronti in cui Peck costa meno, o al massimo il {soglia_t}% in più: la soglia è la costante <code>SOGLIA_OCCASIONE</code> in <code>src/sito.py</code> ed è una nostra scelta. Sotto, chiuso, ci sono i 20 casi in cui Peck costa di più.</li>
+<li><strong>Quando si aggiorna.</strong> I prezzi dei produttori e di Tannico sono pensati per essere ricontrollati una volta a settimana, in automatico. I prezzi di Peck (servizio delivery e carta dell’enoteca) invece si aggiornano solo a mano: se Peck cambia un prezzo, qui resta quello vecchio finché qualcuno non ricontrolla. Ogni confronto riporta la data in cui è stato fatto.</li>
+</ul>
+
+"""
     return f"""<article class="testo-lungo">
 <h1>Come funziona</h1>
 <p class="intro">Peck Tracker è un progetto di appassionati. Sembra un catalogo, ma non vende niente: dice chi fa i prodotti che Peck Milano vende online e che cosa c’è nella carta dei vini della sua enoteca.</p>
@@ -2311,14 +2712,14 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li><strong>Tannico. </strong>I link a Tannico vengono dal catalogo pubblico dei prodotti di Tannico, abbinato per nome ai nostri vini: {sum(1 for w in V['vini'] if 'tn' in w)} link diretti alla scheda (controllati a campione); per tutti gli altri il bottone «Cerca su Tannico» apre una ricerca sul loro sito.</li>
 <li><strong>I voti. </strong>Vengono da tre fonti, tenute separate perché non sono la stessa cosa: i <em>critici</em> (punteggi su 100), il <em>giudizio di Tannico</em> (su 100, è il punteggio del negozio) e la <em>media degli utenti</em> (stelle da 1 a 5). Sui {num(VOTI["tot"])} vini della carta, {num(VOTI["bollini"])} hanno almeno un bollino: {num(VOTI["c"])} con un critico, {num(VOTI["t"])} con il solo giudizio di Tannico, {num(VOTI["u"])} con le sole stelle degli utenti. Registriamo solo i numeri (e il nome di chi ha dato il voto), mai il testo delle recensioni.
 <ul>
-<li><strong>Tannico.</strong> «Giudizio di Tannico» e punteggi dei critici (Parker, Suckling, Decanter…) come li riporta la scheda del vino abbinato, raccolti il {data_lunga(VOTI["data"])} per {VOTI["n"]} vini ({VOTI["tcrit"]} con almeno un critico). Non copiamo i prezzi di Tannico.</li>
+<li><strong>Tannico.</strong> «Giudizio di Tannico» e punteggi dei critici (Parker, Suckling, Decanter…) come li riporta la scheda del vino abbinato, raccolti il {data_lunga(VOTI["data"])} per {VOTI["n"]} vini ({VOTI["tcrit"]} con almeno un critico). I prezzi di Tannico compaiono solo nel confronto con quelli di Peck (vedi «Confronto prezzi»).</li>
 <li><strong>Wine Enthusiast.</strong> {VOTI["we"]} vini, con il punteggio su 100 e il nome di chi ha degustato. Vengono dalla raccolta «Wine Reviews» di Zack Thoutt (Kaggle, recensioni del 2017), licenza <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0{sr_nuova_scheda()}</a>: si possono riusare citando la fonte, <strong>solo senza scopo commerciale</strong> e condividendo con la stessa licenza (questo sito è un progetto senza scopo di lucro e senza niente in vendita). Del testo delle recensioni non copiamo niente.</li>
 <li><strong>X-Wines (utenti).</strong> {VOTI["xw"]} vini, con la media dei voti a stelle e il numero di voti (mai meno di 10). È un dataset di ricerca di de Azambuja, Morais e Filipe (2023, <a href="{XW_DOI}" target="_blank" rel="noopener noreferrer">Big Data and Cognitive Computing 7(1), 20{sr_nuova_scheda()}</a>), licenza CC0 (libero). I voti sono di utenti raccolti sul web nel 2022; gli autori non dicono da quale sito. Sono gusti di chi beve, non giudizi di critici.</li>
 {riga_en}</ul>
 Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enoteche, poi Wine Enthusiast), altrimenti il giudizio di Tannico, altrimenti gli utenti (solo con almeno 10 voti). Il voto si usa solo se l’annata è quella di Peck o dista al massimo 2 anni (per i vini senza annata, solo se manca da entrambe le parti); se è diversa, l’anno è scritto accanto al voto. Per le annate più lontane i voti di Tannico restano nella pagina del vino come riferimento, senza bollino; quelli delle altre fonti non li usiamo. Nell’Enoteca «Con voto» include tutte le fonti, «solo critici» tiene solo chi ha un critico; l’ordine per voto non mischia le scale (critici, poi Tannico, poi utenti; le stelle sono moltiplicate per 20 solo per metterle in ordine tra loro).</li>
 </ul>
 
-<h2>Quanto siamo sicuri</h2>
+{sezione_confronto}<h2>Quanto siamo sicuri</h2>
 <p>Ogni azienda ha un’etichetta:</p>
 <ul>
 <li>{badge("certa")} una fonte mostra proprio quell’indirizzo o quel codice con quell’azienda.</li>
@@ -2381,7 +2782,7 @@ def pagina_404():
 # ---------------------------------------------------------------------------
 
 CARTELLE_GENERATE = ["dispensa", "prodotto", "box", "produttori", "produttore", "enoteca", "cantina",
-                     "vino", "come-funziona"]
+                     "vino", "occasioni", "come-funziona"]
 FILE_GENERATI = ["index.html", "404.html", "vini.json", "dati.json", "sitemap.xml", "robots.txt"]
 
 
@@ -2404,6 +2805,8 @@ def scrivi_sito():
     box_per_nome = {nz(b["nome"]): b["id"] for b in box}
     V, stv = costruisci_vini(box_per_nome)
     az, items, boxes = prepara_cibo(dispensa, box, produttori)
+    righe_conf = collega_confronti(dispensa, az)
+    CV = carica_confronto_vini()
     M = V["meta"]
     pulisci_docs()
 
@@ -2451,15 +2854,20 @@ def scrivi_sito():
                                                    rel=f"cantina/{c['id']}", sezione="enoteca"), "cantina")
     corr = vini_correlati(V["vini"])
     for w in V["vini"]:
-        corpo, descr, titolo = pagina_vino(w, V, "../../", corr[w["id"]])
+        corpo, descr, titolo = pagina_vino(w, V, "../../", corr[w["id"]], CV)
         scrivi_pagina(f"vino/{w['d']}", layout(titolo=titolo, descr=descr, corpo=corpo,
                                                rel=f"vino/{w['d']}", sezione="enoteca"), "vino")
+
+    # --- Angolo delle occasioni
+    corpo, descr = pagina_occasioni(voci_confronto(righe_conf, V, CV, "../"), "../")
+    scrivi_pagina("occasioni", layout(titolo="Angolo delle occasioni", descr=descr, corpo=corpo, rel="occasioni",
+                                      sezione="occasioni"), "occasioni")
 
     # --- Come funziona, 404
     scrivi_pagina("come-funziona", layout(
         titolo="Come funziona", sezione="come-funziona", rel="come-funziona",
         descr=f"Da dove vengono i dati di Peck Tracker, quanto siamo sicuri e quali sono i limiti. {AVVISO}",
-        corpo=pagina_come_funziona(dispensa, box, produttori, V, M)), "come funziona")
+        corpo=pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV)), "come funziona")
     (DOCS / "404.html").write_text(pagina_404(), encoding="utf-8")
 
     # --- dati per i filtri dell'enoteca, sitemap, robots
