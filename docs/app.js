@@ -197,6 +197,13 @@
 
     const urlTannico = t => 'https://www.tannico.it/search?q=' + t.split(/\s+/).filter(Boolean).map(encodeURIComponent).join('+');
 
+    // bollino del voto (stessa logica di badge_voto() in sito.py): critici, Tannico e utenti hanno colori diversi
+    const votoBadge = w => {
+      if (!w.vb) return '';
+      const tit = w.vf + (w.vy ? ' per l’annata ' + w.vy + ', non quella di Peck' : '');
+      return ` <span class="voto-badge vk-${esc(w.vk)}" title="${esc(tit)}">${esc(w.vb + (w.vy ? ' · ' + w.vy : ''))}</span>`;
+    };
+
     function cardVino(w) {
       const pagina = radice + 'vino/' + w.d + '/';
       const fotoUrl = w.ph ? (w.ph.startsWith('http') ? w.ph : V.meta.prefisso_foto + w.ph) : '';
@@ -213,7 +220,7 @@
       const ext = (url, t) => `<a class="bottone secondario piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${t}<span class="sr"> (si apre in una nuova scheda)</span></a>`;
       const tt = w.tt || (w.n);
       return `<li class="it"><article class="scheda vino">${foto}<div class="corpo">` +
-        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}${w.vb ? ` <span class="voto-badge" title="${esc('Voto riportato da Tannico' + (w.vy ? ' per l’annata ' + w.vy + ', non quella di Peck' : ''))}">${esc(w.vb + (w.vy ? ' · ' + w.vy : ''))}</span>` : ''}</p>` +
+        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}${votoBadge(w)}</p>` +
         `<h2 class="nome"><a class="vai" href="${pagina}">${esc(w.n)}</a></h2></div>` +
         `<p class="meta"><span class="col-b"><a href="${radice}cantina/${esc(w.cantina.id)}/">${esc(w.cantina.nome)}</a></span>` +
         `<span class="col-c">${esc([w.r, w.paese].filter(Boolean).join(' · '))}</span></p>` +
@@ -224,6 +231,8 @@
               : ext(urlTannico(tt), 'Cerca su Tannico')) + `</div>` +
         `</div></article></li>`;
     }
+
+    const GRUPPO_VOTO = { c: 0, t: 1, u: 2 };
 
     function filtraVini(S) {
       const M = V.meta;
@@ -237,7 +246,7 @@
       const rif = w => (S.fmt ? rigaPerFormato(w, S.fmt) : rigaPrincipale(w));
       let arr = V.vini.filter(w => {
         if (!((ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
-          (!can || w.kc.includes(can)) && (!S.tan || (w.tn && !w.tf)) && (!S.voto || w.vn != null) &&
+          (!can || w.kc.includes(can)) && (!S.tan || (w.tn && !w.tf)) && (!S.voto || w.vk) && (!S.crit || w.vk === 'c') &&
           q.every(t => w.k.includes(t)))) return false;
         if (S.fmt) {
           if (S.fmt === 'set' ? !w.f.some(f => f[6] === 'Set') : !w.f.some(f => catFormato(f) === S.fmt)) return false;
@@ -258,7 +267,8 @@
         'litro-su': (x, y) => (perLitro(x) == null) - (perLitro(y) == null) || (perLitro(x) - perLitro(y)),
         'annata-giu': (x, y) => (Number(y.a) || 0) - (Number(x.a) || 0),
         'annata-su': (x, y) => (Number(x.a) || 9999) - (Number(y.a) || 9999),
-        'voto-giu': (x, y) => (x.vn == null) - (y.vn == null) || (y.vn - x.vn) || x.n.localeCompare(y.n, 'it', { numeric: true }),
+        // tre gruppi che non si mischiano: critici /100, poi giudizio Tannico /100, poi utenti (stelle x 20, solo per ordinare)
+        'voto-giu': (x, y) => (GRUPPO_VOTO[x.vk] ?? 9) - (GRUPPO_VOTO[y.vk] ?? 9) || (y.vn - x.vn) || x.n.localeCompare(y.n, 'it', { numeric: true }),
       }[S.ord] || ((x, y) => x.n.localeCompare(y.n, 'it', { numeric: true }));
       return arr.sort(f);
     }
@@ -268,6 +278,8 @@
       elenco = filtraVini(S);
       const notaOrd = document.getElementById('nota-ord');
       if (notaOrd) notaOrd.hidden = !(String(S.ord || '').startsWith('prezzo') && !S.fmt);
+      const notaVoto = document.getElementById('nota-voto');
+      if (notaVoto) notaVoto.hidden = S.ord !== 'voto-giu';
       const n = elenco.length;
       scrittoConteggio(n);
       vuoto.hidden = n !== 0;
@@ -332,7 +344,16 @@
     clearTimeout(timer);
     timer = setTimeout(applica, 180);
   });
-  form.addEventListener('change', ev => { clearTimeout(timer); applica(); });
+  // «solo critici» è un sotto-filtro di «Con voto»: spuntarlo spunta anche l'altro, togliere «Con voto» toglie anche lui
+  const fVoto = form.querySelector('[name="voto"]'), fCrit = form.querySelector('[name="crit"]');
+  if (fVoto && fCrit && fCrit.checked) fVoto.checked = true;
+  form.addEventListener('change', ev => {
+    if (fVoto && fCrit) {
+      if (ev.target === fCrit && fCrit.checked) fVoto.checked = true;
+      if (ev.target === fVoto && !fVoto.checked) fCrit.checked = false;
+    }
+    clearTimeout(timer); applica();
+  });
   form.querySelector('.azzera').addEventListener('click', () => {
     for (const c of controlli) { if (c.type === 'checkbox') c.checked = false; else c.value = ''; }
     applica();

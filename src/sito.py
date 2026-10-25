@@ -884,11 +884,140 @@ def carica_voti():
                 if c[2] == "100":
                     scelto = (CRITICI_BREVI.get(c[0], c[0]), int(float(c[1])))
                     break
-        if not scelto and pt is not None:
-            scelto = ("Tannico", pt)
-        voce["bollino"] = scelto
+        voce["critico_bollino"] = scelto                  # (nome breve, voto /100) o None
+        voce["bollino"] = scelto or (("Tannico", pt) if pt is not None else None)
         out[r["id"]] = voce
     return out
+
+
+# ---------------------------------------------------------------------------
+# Voti da fonti aperte (data/voti_aperti.csv: Wine Enthusiast e X-Wines) e dalle enoteche
+# (data/voti_enoteche.csv, se c'e': punteggi di critici riportati da un negozio, con link)
+# ---------------------------------------------------------------------------
+
+MAX_SCARTO_ANNATA = 2          # stessa regola dei voti Tannico: oltre 2 anni il voto non si usa
+XW_MIN_VOTI = 10
+WE_LICENZA = "CC BY-NC-SA 4.0"
+XW_DOI = "https://doi.org/10.3390/bdcc7010020"
+
+
+def scarto_annata(ap, aa, corr):
+    """Anni di distanza fra l'annata Peck (ap) e quella del voto (aa); None se il voto non si puo' usare.
+    Si usano solo le righe `esatta` e `annata diversa` entro MAX_SCARTO_ANNATA anni."""
+    ap, aa = (ap or "").strip(), (aa or "").strip()
+    if corr == "esatta":
+        return abs(int(ap) - int(aa)) if ap.isdigit() and aa.isdigit() else 0
+    if corr == "annata diversa" and ap.isdigit() and aa.isdigit():
+        d = abs(int(ap) - int(aa))
+        return d if 0 < d <= MAX_SCARTO_ANNATA else None
+    return None
+
+
+def numero(x):
+    try:
+        return float(str(x).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def carica_voti_aperti():
+    """id vino -> {"we": [...], "xw": [...], "en": [...]}, ancora da filtrare per annata (dipende dal vino Peck).
+    Non legge MAI voti_aperti_da_controllare.csv."""
+    out = defaultdict(lambda: {"we": [], "xw": [], "en": []})
+    try:
+        righe = leggi_csv("voti_aperti")
+    except FileNotFoundError:
+        righe = []
+    for r in righe:
+        voto = numero(r["voto"])
+        if voto is None or r["corrispondenza"] not in ("esatta", "annata diversa"):
+            continue
+        base = {"anno": r["annata_fonte"].strip(), "corr": r["corrispondenza"], "voto": voto}
+        if r["fonte"] == "Wine Enthusiast" and r["scala"] == "100":
+            critico = r["critico/rivista"].strip()
+            base["critico"] = "" if critico in ("", "Wine Enthusiast") else critico
+            if base not in out[r["id"]]["we"]:
+                out[r["id"]]["we"].append(base)
+        elif r["fonte"] == "X-Wines" and r["scala"] == "5":
+            m = re.search(r"n=(\d+)", r["critico/rivista"])
+            base["n"] = int(m.group(1)) if m else 0
+            if base["n"] >= XW_MIN_VOTI:
+                out[r["id"]]["xw"].append(base)
+    try:
+        righe = leggi_csv("voti_enoteche")
+    except FileNotFoundError:
+        righe = []
+    for r in righe:
+        voto = numero(r.get("voto"))
+        if voto is None or r.get("corrispondenza") not in ("esatta", "annata diversa"):
+            continue
+        out[r["id"]]["en"].append({"anno": (r.get("annata_fonte") or "").strip(), "corr": r["corrispondenza"],
+                                   "voto": voto, "scala": (r.get("scala") or "100").strip(),
+                                   "fonte": (r.get("fonte") or "").strip(), "url": (r.get("url") or "").strip(),
+                                   "critico": (r.get("critico") or "").strip()})
+    return out
+
+
+def filtra_aperti(grezzi, annata_peck):
+    """Tiene solo i voti con annata uguale o a non piu' di 2 anni; aggiunge `scarto` e `diversa`."""
+    out = {"we": [], "xw": [], "en": []}
+    for k in out:
+        for e in grezzi[k]:
+            sc = scarto_annata(annata_peck, e["anno"], e["corr"])
+            if sc is None:
+                continue
+            e = dict(e, scarto=sc, diversa=e["anno"].isdigit() and e["anno"] != (annata_peck or "").strip())   # «NV» non e' un'annata diversa
+            out[k].append(e)
+    out["we"].sort(key=lambda e: (e["scarto"], -e["voto"]))
+    out["xw"].sort(key=lambda e: (e["scarto"], -e["n"]))
+    out["en"].sort(key=lambda e: (e["scarto"], -e["voto"]))
+    return out
+
+
+def nome_breve(critico):
+    return CRITICI_BREVI.get(critico, critico)
+
+
+def scegli_bollino(t, ap):
+    """Il bollino della scheda. Priorita': critico /100 (Tannico, poi enoteche, poi Wine Enthusiast),
+    poi il giudizio di Tannico, poi la media degli utenti X-Wines (almeno 10 voti).
+    t = voti Tannico se l'annata e' vicina (altrimenti None), ap = voti aperti gia' filtrati.
+    Restituisce dict {testo, tipo (c/t/u), n (per ordinare), anno (se diversa), fonte (per il titolo)} o None."""
+    if t and t.get("critico_bollino"):
+        nome, val = t["critico_bollino"]
+        diversa = t["diversa"] and t["_diversa_da_peck"]
+        return {"testo": f"{nome} {val}", "tipo": "c", "n": val, "anno": (t["anno"] or "altra annata") if diversa else "",
+                "fonte": "Voto riportato da Tannico"}
+    en100 = [e for e in ap["en"] if e["scala"] == "100"]
+    if en100:
+        def peso(e):
+            for i, nome in enumerate(CRITICI_ORDINE):
+                if e["critico"] == nome:
+                    return i
+            return len(CRITICI_ORDINE)
+        e = sorted(en100, key=lambda e: (peso(e), e["scarto"], -e["voto"]))[0]
+        etichetta = nome_breve(e["critico"]) or e["fonte"]
+        return {"testo": f"{etichetta} {int(e['voto'])}", "tipo": "c", "n": int(e["voto"]),
+                "anno": e["anno"] if e["diversa"] else "",
+                "fonte": f"Voto riportato da {e['fonte']}" if e["fonte"] else "Voto di un’enoteca"}
+    if ap["we"]:
+        e = ap["we"][0]
+        return {"testo": f"WE {int(e['voto'])}", "tipo": "c", "n": int(e["voto"]), "anno": e["anno"] if e["diversa"] else "",
+                "fonte": "Voto di Wine Enthusiast" + (f" ({e['critico']})" if e["critico"] else "")}
+    if t and t["tannico"] is not None:
+        diversa = t["diversa"] and t["_diversa_da_peck"]
+        return {"testo": f"Tannico {t['tannico']}", "tipo": "t", "n": t["tannico"],
+                "anno": (t["anno"] or "altra annata") if diversa else "", "fonte": "Giudizio di Tannico, non di un critico"}
+    if ap["xw"]:
+        e = ap["xw"][0]
+        return {"testo": f"Utenti {stelle_it(e['voto'])}★", "tipo": "u", "n": round(e["voto"] * 20, 1),
+                "anno": e["anno"] if e["diversa"] else "",
+                "fonte": f"Media dei voti degli utenti di X-Wines, {e['n']} voti, non di critici"}
+    return None
+
+
+def stelle_it(x, cifre=1):
+    return f"{x:.{cifre}f}".replace(".", ",")
 
 
 def litri_it(x):
@@ -927,6 +1056,7 @@ def costruisci_vini(box_per_nome):
     righe = leggi_csv("vini")
     tannico = carica_tannico()
     voti = carica_voti()
+    voti_aperti = carica_voti_aperti()
     cantine_csv = leggi_csv("cantine")
     nelle_box = leggi_csv("vini_nelle_box")
 
@@ -981,6 +1111,7 @@ def costruisci_vini(box_per_nome):
                     if not w[k]:
                         del w[k]
             v = voti.get(r["id"])
+            t_ok = None                                                   # voti Tannico con annata vicina (per il bollino)
             if v and v["bollino"]:                                        # voti dalla scheda Tannico
                 ap, at = r["annata"].strip(), (v["anno"] or "").strip()
                 if ap.isdigit() and at.isdigit():
@@ -989,12 +1120,18 @@ def costruisci_vini(box_per_nome):
                 else:
                     scarto, vicina = None, (not ap and not at)            # senza annata: solo se manca da entrambe
                 v["lontana"] = v["diversa"] and scarto is not None and scarto > 2
+                v["_diversa_da_peck"] = v["diversa"] and at != ap
                 if vicina:                                                # bollino solo se l'annata e' (quasi) la stessa
-                    w["vb"] = v["bollino"][0] + " " + str(v["bollino"][1])    # "Parker 96"
-                    w["vn"] = v["bollino"][1]                             # numero: per ordinare e filtrare
-                    if v["diversa"] and at != ap:
-                        w["vy"] = v["anno"] or "altra annata"             # annata dei voti, se non e' quella di Peck
-                w["voti"] = v                                             # completo: solo per la pagina del vino
+                    t_ok = v
+            aperti = filtra_aperti(voti_aperti[r["id"]], r["annata"]) if r["id"] in voti_aperti else                 {"we": [], "xw": [], "en": []}
+            bol = scegli_bollino(t_ok, aperti)
+            if bol:
+                w["vb"], w["vk"], w["vn"] = bol["testo"], bol["tipo"], bol["n"]   # testo, tipo (c/t/u), numero per ordinare
+                w["vf"] = bol["fonte"]                                    # per il titolo del bollino
+                if bol["anno"]:
+                    w["vy"] = bol["anno"]                                 # annata del voto, se non e' quella di Peck
+            if v or aperti["we"] or aperti["xw"] or aperti["en"]:
+                w["voti"] = {"t": v, "we": aperti["we"], "xw": aperti["xw"], "en": aperti["en"]}   # completo: solo per la pagina
             # profilo di degustazione (0-5): [(nome, valore)] solo per quelli indicati
             prof = [(nome, intero(r.get(col))) for col, nome in ATTRIBUTI_VINO]
             prof = [(n, v) for n, v in prof if v is not None]
@@ -1087,7 +1224,7 @@ def costruisci_vini(box_per_nome):
 
 def json_vini(vini):
     """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
-    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "tf", "vb", "vn", "vy")
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "tf", "vb", "vn", "vk", "vf", "vy")
     return {
         "meta": vini["meta"],
         "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
@@ -1325,8 +1462,8 @@ def ctl_select(nome, etichetta, opzioni, attr="", modo="eq", vuoto="Tutti", dip=
             f'<option value="">{H(vuoto)}</option>{ops}</select></div>')
 
 
-def ctl_spunta(nome, etichetta, attr):
-    return (f'<div class="campo spunta"><input type="checkbox" id="f-{nome}" name="{nome}" value="1" '
+def ctl_spunta(nome, etichetta, attr, classe=""):
+    return (f'<div class="campo spunta{(" " + classe) if classe else ""}"><input type="checkbox" id="f-{nome}" name="{nome}" value="1" '
             f'data-modo="flag" data-attr="{attr}"><label for="f-{nome}">{H(etichetta)}</label></div>')
 
 
@@ -1769,39 +1906,98 @@ def bottone_tannico(w, classe):
 
 
 def badge_voto(w):
-    """Bollino piccolo con il voto migliore (es. «Parker 96» o, per un'altra annata, «Parker 96 · 2022»)."""
+    """Bollino piccolo con il voto migliore (es. «Parker 96», «WE 92», «Utenti 4,2★» o, per un'altra annata,
+    «WE 92 · 2019»). Critici, Tannico e utenti hanno colori diversi (classe vk-c / vk-t / vk-u).
+    Stessa logica di votoBadge() in app.js."""
     if "vb" not in w:
         return ""
     testo = w["vb"] + (f" · {w['vy']}" if w.get("vy") else "")
-    tit = ("Voto riportato da Tannico" + (f" per l’annata {w['vy']}, non quella di Peck" if w.get("vy") else ""))
-    return f' <span class="voto-badge" title="{H(tit)}">{H(testo)}</span>'
+    tit = w["vf"] + (f" per l’annata {w['vy']}, non quella di Peck" if w.get("vy") else "")
+    return f' <span class="voto-badge vk-{w["vk"]}" title="{H(tit)}">{H(testo)}</span>'
+
+
+def nota_annata_voto(e, w):
+    """«annata 2019 (in carta: 2020)» se l'annata del voto non e' quella di Peck, altrimenti vuoto."""
+    if not e.get("diversa"):
+        return ""
+    return f' <span class="meta">· annata {H(e["anno"])} (in carta: {H(w["a"] or "senza annata")})</span>'
+
+
+def riga_voto(fonte, valore, extra=""):
+    return f'<li><span class="fonte">{fonte}</span><span>{valore}{extra}</span></li>'
 
 
 def blocco_voti(w):
     v = w.get("voti")
     if not v:
         return ""
-    righe = ""
-    if v["tannico"] is not None:
-        righe += f'<li><span class="fonte">Giudizio di Tannico</span><span><strong>{v["tannico"]}</strong>/100</span></li>'
-    for nome, valore, scala in v["critici"]:
-        if scala.isdigit():
-            val = f"<strong>{H(valore)}</strong>/{H(scala)}"
-        else:
-            val = f"<strong>{H(valore)}</strong>" + (f" {H(scala)}" if scala else "")
-        righe += f'<li><span class="fonte">{H(nome)}</span><span>{val}</span></li>'
+    t = v["t"]
+    # --- Critici ---
+    crit, fonti = "", []
+    if t:
+        for nome, valore, scala in t["critici"]:
+            if scala.isdigit():
+                val = f"<strong>{H(valore)}</strong>/{H(scala)}"
+            else:
+                val = f"<strong>{H(valore)}</strong>" + (f" {H(scala)}" if scala else "")
+            nota = (f' <span class="meta">· annata {H(t["anno"] or "diversa")} (in carta: {H(w["a"] or "senza annata")})</span>'
+                    if t.get("_diversa_da_peck") else "")
+            crit += riga_voto(H(nome), val, nota + ' <span class="meta">· via Tannico</span>')
+    for e in v["en"]:
+        scala = e["scala"] or "100"
+        punti = f"{e['voto']:g}".replace(".", ",")
+        val = f"<strong>{H(punti)}</strong>/{H(scala)}"
+        fonte = H(e["critico"] or e["fonte"])
+        via = (f'<a href="{H(e["url"])}" target="_blank" rel="noopener noreferrer">{H(e["fonte"])}{sr_nuova_scheda()}</a>'
+               if e["url"] else H(e["fonte"]))
+        crit += riga_voto(fonte, val, nota_annata_voto(e, w) + f' <span class="meta">· via {via}</span>')
+    for e in v["we"]:
+        crit += riga_voto("Wine Enthusiast", f"<strong>{int(e['voto'])}</strong>/100",
+                          (f' <span class="meta">· {H(e["critico"])}</span>' if e["critico"] else "") + nota_annata_voto(e, w))
+    sezioni = ""
+    if crit:
+        sezioni += f'<h3>Critici</h3><ul class="voti">{crit}</ul>'
+    # --- Tannico ---
+    if t and t["tannico"] is not None:
+        sezioni += (f'<h3>Tannico</h3><ul class="voti">'
+                    + riga_voto("Giudizio di Tannico", f'<strong>{t["tannico"]}</strong>/100',
+                                nota_annata_voto({"diversa": t.get("_diversa_da_peck"), "anno": t["anno"] or "diversa"}, w))
+                    + '</ul><p class="meta">È il punteggio che Tannico dà ai suoi prodotti: non è il voto di un critico.</p>')
+    # --- Utenti ---
+    if v["xw"]:
+        e = v["xw"][0]
+        sezioni += ('<h3>Utenti (X-Wines)</h3><ul class="voti">'
+                    + riga_voto("Media degli utenti", f"<strong>{stelle_it(e['voto'], 2)}</strong> su 5",
+                                f' <span class="meta">· {num(e["n"])} voti</span>' + nota_annata_voto(e, w))
+                    + '</ul><p class="meta">Media dei voti a stelle (da 1 a 5) lasciati da utenti di siti di vino: non sono voti di critici.</p>')
     avviso = ""
-    if v.get("lontana"):
-        avviso = (f'<p class="avviso-annata"><strong>Voti dell’annata {H(v["anno"])}</strong>, lontana da quella in carta '
+    if t and t.get("lontana"):
+        avviso = (f'<p class="avviso-annata"><strong>Voti di Tannico dell’annata {H(t["anno"])}</strong>, lontana da quella in carta '
                   f'({H(w["a"])}): li riportiamo solo come riferimento sul vino, non sulla bottiglia.</p>')
-    elif v["diversa"]:
-        anno = v["anno"] or "un’altra annata"
-        avviso = (f'<p class="avviso-annata"><strong>Voti dell’annata {H(anno)}</strong> '
+    elif t and t["diversa"] and t.get("_diversa_da_peck"):
+        anno = t["anno"] or "un’altra annata"
+        avviso = (f'<p class="avviso-annata"><strong>Voti di Tannico dell’annata {H(anno)}</strong> '
                   f'(su Peck c’è la {H(w["a"] or "senza annata")}): non sono i voti della bottiglia della carta.</p>')
-    return (f'<section class="sezione" id="voti"><h2>Voti</h2>{avviso}<ul class="voti">{righe}</ul>'
-            f'<p class="meta">Voti e critici come li riporta Tannico nella scheda del prodotto, raccolti il '
-            f'{data_lunga(v["data"])}; non sono nostri. '
-            f'<a href="{H(v["url"])}" target="_blank" rel="noopener noreferrer">Vedi la scheda su Tannico{sr_nuova_scheda()}</a>.</p></section>')
+    # --- Fonti e licenze ---
+    if t:
+        fonti.append(f'Tannico: voti e critici come li riporta la scheda del prodotto, raccolti il {data_lunga(t["data"])}; '
+                     f'non sono nostri. <a href="{H(t["url"])}" target="_blank" rel="noopener noreferrer">Vedi la scheda su Tannico{sr_nuova_scheda()}</a>.')
+    if v["we"]:
+        fonti.append('Wine Enthusiast: punteggi dalla raccolta «Wine Reviews» di Zack Thoutt (Kaggle), '
+                     'licenza <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">'
+                     f'CC BY-NC-SA 4.0{sr_nuova_scheda()}</a> (uso non commerciale, stessa licenza). Riportiamo il punteggio e il nome '
+                     'di chi ha degustato, mai il testo della recensione.')
+    if v["en"]:
+        nomi = sorted({e["fonte"] for e in v["en"] if e["fonte"]})
+        fonti.append(f'{H(", ".join(nomi) or "Enoteche")}: punteggi di critici come li riporta la scheda del negozio '
+                     '(il link porta lì); non sono nostri, non copiamo il testo delle recensioni.')
+    if v["xw"]:
+        fonti.append('X-Wines: dataset di ricerca di de Azambuja, Morais e Filipe (2023), licenza '
+                     '<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">'
+                     f'CC0{sr_nuova_scheda()}</a>; <a href="{XW_DOI}" target="_blank" rel="noopener noreferrer">doi 10.3390/bdcc7010020'
+                     f'{sr_nuova_scheda()}</a>. I voti sono quelli di utenti raccolti sul web nel 2022; gli autori non dicono da quale sito.')
+    return (f'<section class="sezione" id="voti"><h2>Voti</h2>{avviso}{sezioni}'
+            f'<ul class="fonti meta">' + "".join(f"<li>{f}</li>" for f in fonti) + '</ul></section>')
 
 
 def url_foto_vino(w):
@@ -1851,6 +2047,7 @@ def pagina_enoteca(V):
                                       ("grandi", "Grandi formati (3 L e oltre)"), ("set", "Set e casse")], vuoto="Tutti i formati") +
         ctl_spunta("tan", "Su Tannico", "") +
         ctl_spunta("voto", "Con voto", "") +
+        ctl_spunta("crit", "solo critici", "", "sotto") +
         ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
                                      ("litro-su", "Prezzo al litro: dal più basso"),
                                      ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia"),
@@ -1864,6 +2061,7 @@ def pagina_enoteca(V):
 {form_filtri("Filtri: enoteca", ctl_cerca("Cerca un vino, un’uva o una cantina", "per esempio: Barolo, Nebbiolo, Gaja"), campi)}
 {barra_lista(conta_testo(M["n_vini"], "vino", "vini"))}
 <p class="meta nota-ord" id="nota-ord" hidden>Ordinati per prezzo a parità di formato: prima le bottiglie da 0,75 L, poi gli altri formati (dal più piccolo al più grande), ciascuno dal prezzo che hai scelto. Con il filtro «Formato» vedi un formato solo.</p>
+<p class="meta nota-ord" id="nota-voto" hidden>Ordine per voto senza mischiare le scale: prima i vini con il voto di un critico (su 100), poi quelli con il solo giudizio di Tannico (su 100), poi quelli con la sola media degli utenti (stelle da 1 a 5, moltiplicate per 20 solo per metterle in ordine tra loro; il bollino mostra sempre le stelle). Un punteggio di utenti non è confrontabile con quello di un critico.</p>
 <div class="lista" id="lista" data-enoteca data-json="../vini.json" data-singolare="vino" data-plurale="vini">
 <div class="intestazione-elenco" aria-hidden="true"><span></span><span>Vino</span><span>Cantina</span><span>Dove</span><span>Prezzo</span></div>
 <ul class="griglia"></ul>
@@ -1901,7 +2099,7 @@ def pagina_cantina(c, boxes, r):
 {('<p class="meta">Nota: ' + H(c["nota"]) + "</p>") if c["nota"] else ""}
 {box_html}
 <section class="sezione"><h2>Tutte le etichette ({len(vini)})</h2>
-<p class="meta">I bottoni Vivino, Wine-Searcher e Tannico aprono la scheda o una ricerca sui loro siti. Il bollino con un voto (per esempio «Parker 96») viene dalla scheda Tannico del vino; se l’annata è diversa da quella di Peck c’è scritto anche l’anno.</p>
+<p class="meta">I bottoni Vivino, Wine-Searcher e Tannico aprono la scheda o una ricerca sui loro siti. Il bollino con un voto può essere di un critico («Parker 96», «WE 92»), il giudizio di Tannico («Tannico 92») o la media degli utenti («Utenti 4,2★»): tre cose diverse, con colori diversi. Se l’annata è diversa da quella di Peck c’è scritto anche l’anno. Da dove vengono i voti: «Come funziona».</p>
 <ul class="griglia">{"".join(f"<li>{scheda_vino(w, r)}</li>" for w in vini)}</ul>
 </section>
 </article>"""
@@ -2056,11 +2254,22 @@ def vini_correlati(vini):
 
 def pagina_come_funziona(dispensa, box, produttori, V, M):
     conta = Counter(d["stato"] for d in dispensa)
-    VOTI = {"n": sum(1 for w in V["vini"] if "tn" in w),
-            "data": next((w["voti"]["data"] for w in V["vini"] if "voti" in w), "2026-10-25")}
+    def _con(k):
+        return sum(1 for w in V["vini"] if w.get("voti") and w["voti"][k])
+    VOTI = {"n": sum(1 for w in V["vini"] if w.get("voti") and w["voti"]["t"]),
+            "data": next((w["voti"]["t"]["data"] for w in V["vini"] if w.get("voti") and w["voti"]["t"]), "2026-10-25"),
+            "tot": len(V["vini"]), "bollini": sum(1 for w in V["vini"] if "vb" in w),
+            "c": sum(1 for w in V["vini"] if w.get("vk") == "c"), "t": sum(1 for w in V["vini"] if w.get("vk") == "t"),
+            "u": sum(1 for w in V["vini"] if w.get("vk") == "u"),
+            "we": _con("we"), "xw": _con("xw"), "en": _con("en"),
+            "tcrit": sum(1 for w in V["vini"] if w.get("voti") and w["voti"]["t"] and w["voti"]["t"]["critici"])}
+    en_nomi = sorted({e["fonte"] for w in V["vini"] if w.get("voti") for e in w["voti"]["en"] if e["fonte"]})
+    riga_en = (f'<li><strong>Enoteche e negozi.</strong> Per {VOTI["en"]} vini abbiamo anche i punteggi di critici che un negozio'
+               f' ({H(", ".join(en_nomi))}) riporta nella scheda del prodotto; sul bollino valgono come i critici, con il nome del negozio e il link.</li>'
+               if VOTI["en"] else "")
     n_delivery = sum(1 for d in dispensa if d.get("delivery"))
     n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti"]
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else [])
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -2100,7 +2309,13 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
 <li><strong>I punteggi. </strong>I bottoni Vivino e Wine-Searcher aprono una ricerca sui loro siti per quel vino. Non copiamo nessun punteggio: il vino cercato potrebbe non essere esattamente lo stesso (annata, formato), da controllare lì. Se su Tannico c’è solo un altro formato (per esempio la 0,75 L per un magnum) il bottone lo dice.</li>
 <li><strong>Tannico. </strong>I link a Tannico vengono dal catalogo pubblico dei prodotti di Tannico, abbinato per nome ai nostri vini: {sum(1 for w in V['vini'] if 'tn' in w)} link diretti alla scheda (controllati a campione); per tutti gli altri il bottone «Cerca su Tannico» apre una ricerca sul loro sito.</li>
-<li><strong>I voti. </strong>I voti vengono dalla scheda Tannico del vino abbinato (il «Giudizio di Tannico» e i punteggi dei critici, come li riporta Tannico), raccolti il {data_lunga(VOTI["data"])} solo per i {VOTI["n"]} vini che Tannico vende. Registriamo solo i numeri e il nome del critico, mai il testo delle recensioni. Se la scheda Tannico è di un’altra annata, i voti sono di quell’annata e l’anno è scritto accanto al voto; il bollino con il voto sulle schede compare solo se l’annata di Tannico dista al massimo 2 anni da quella in carta (per i vini senza annata, solo se manca da entrambe le parti). Per le annate più lontane i voti restano nella pagina del vino, ma solo come riferimento. Non copiamo i prezzi di Tannico.</li>
+<li><strong>I voti. </strong>Vengono da tre fonti, tenute separate perché non sono la stessa cosa: i <em>critici</em> (punteggi su 100), il <em>giudizio di Tannico</em> (su 100, è il punteggio del negozio) e la <em>media degli utenti</em> (stelle da 1 a 5). Sui {num(VOTI["tot"])} vini della carta, {num(VOTI["bollini"])} hanno almeno un bollino: {num(VOTI["c"])} con un critico, {num(VOTI["t"])} con il solo giudizio di Tannico, {num(VOTI["u"])} con le sole stelle degli utenti. Registriamo solo i numeri (e il nome di chi ha dato il voto), mai il testo delle recensioni.
+<ul>
+<li><strong>Tannico.</strong> «Giudizio di Tannico» e punteggi dei critici (Parker, Suckling, Decanter…) come li riporta la scheda del vino abbinato, raccolti il {data_lunga(VOTI["data"])} per {VOTI["n"]} vini ({VOTI["tcrit"]} con almeno un critico). Non copiamo i prezzi di Tannico.</li>
+<li><strong>Wine Enthusiast.</strong> {VOTI["we"]} vini, con il punteggio su 100 e il nome di chi ha degustato. Vengono dalla raccolta «Wine Reviews» di Zack Thoutt (Kaggle, recensioni del 2017), licenza <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0{sr_nuova_scheda()}</a>: si possono riusare citando la fonte, <strong>solo senza scopo commerciale</strong> e condividendo con la stessa licenza (questo sito è un progetto senza scopo di lucro e senza niente in vendita). Del testo delle recensioni non copiamo niente.</li>
+<li><strong>X-Wines (utenti).</strong> {VOTI["xw"]} vini, con la media dei voti a stelle e il numero di voti (mai meno di 10). È un dataset di ricerca di de Azambuja, Morais e Filipe (2023, <a href="{XW_DOI}" target="_blank" rel="noopener noreferrer">Big Data and Cognitive Computing 7(1), 20{sr_nuova_scheda()}</a>), licenza CC0 (libero). I voti sono di utenti raccolti sul web nel 2022; gli autori non dicono da quale sito. Sono gusti di chi beve, non giudizi di critici.</li>
+{riga_en}</ul>
+Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enoteche, poi Wine Enthusiast), altrimenti il giudizio di Tannico, altrimenti gli utenti (solo con almeno 10 voti). Il voto si usa solo se l’annata è quella di Peck o dista al massimo 2 anni (per i vini senza annata, solo se manca da entrambe le parti); se è diversa, l’anno è scritto accanto al voto. Per le annate più lontane i voti di Tannico restano nella pagina del vino come riferimento, senza bollino; quelli delle altre fonti non li usiamo. Nell’Enoteca «Con voto» include tutte le fonti, «solo critici» tiene solo chi ha un critico; l’ordine per voto non mischia le scale (critici, poi Tannico, poi utenti; le stelle sono moltiplicate per 20 solo per metterle in ordine tra loro).</li>
 </ul>
 
 <h2>Quanto siamo sicuri</h2>
@@ -2128,7 +2343,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M):
 <li>Il profilo di degustazione, la gradazione, la temperatura di servizio e le finestre «da bere» sono indicazioni della scheda dell’enoteca, spesso di massima (per molti vini la gradazione è identica): non sono misure.</li>
 <li>I vini senza prezzo nella carta compaiono con “prezzo non indicato”.</li>
 <li>Il formato di ogni prezzo (Bottiglia, Magnum, Jeroboam…) è scritto in litri, presi dalla capacità indicata da Winerim o, se c’è, dal formato scritto nel nome del vino («Magnum 1,5 LT», «37,5 cl»): quando i due non coincidono vale il nome. Succede in 53 casi (per esempio 27 magnum registrati come bottiglie da 0,75 L) e la nota lo dice. Per 87 vini senza prezzo, quasi tutti di Borgogna, il formato non è indicato e resta vuoto. Un dubbio aperto: il Barbaresco Riserva Rabajà 2019 di Cortese è registrato come magnum ma il nome dice «Rehoboam 5 LT»; l’abbiamo messo a 5 litri, da verificare. I nomi dei formati cambiano da regione a regione (3 litri sono un Jeroboam in Champagne e un Doppio Magnum a Bordeaux): contano i litri. Nell’elenco ordinato per prezzo si confrontano formati uguali.</li>
-<li>I voti sono quelli che Tannico mostra nella scheda del vino abbinato: l’abbinamento è fatto per nome e può sbagliare, e se l’annata è diversa i voti non sono quelli della bottiglia di Peck. I voti dei critici possono riferirsi all’annata “corrente” della scheda. Non tutti i vini li hanno.</li>
+<li>Tutti i voti sono abbinati ai vini per nome (cantina, nome, annata) e l’abbinamento può sbagliare; quelli incerti li abbiamo scartati. Se l’annata è diversa i voti non sono quelli della bottiglia di Peck. I voti dei critici su Tannico possono riferirsi all’annata “corrente” della scheda. Le stelle degli utenti sono medie di gusti, non giudizi tecnici, e arrivano da un dataset del 2022. Non tutti i vini hanno un voto.</li>
 </ul>
 {sezione_link}
 <h2>Come sono scelte le categorie</h2>

@@ -26,6 +26,11 @@ Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
 - `vini_nelle_box.csv`: i produttori di vino nominati nelle box dello shop, confrontati con la carta.
 - `tannico.csv` e `tannico_voti.csv`: il vino di Tannico abbinato a ogni vino della carta e i voti presi dalla sua
   scheda (vedi "La carta dei vini" e "Il sito").
+- `voti_aperti.csv`: voti da due raccolte con licenza libera, abbinati ai vini (prodotto da `src/voti_aperti.py`):
+  punteggi di Wine Enthusiast (CC BY-NC-SA 4.0) e media degli utenti di X-Wines (CC0). Vedi "Il sito". Il file
+  `voti_aperti_da_controllare.csv` (abbinamenti incerti) **non si usa mai** sul sito. Se esiste `voti_enoteche.csv`
+  (punteggi di critici riportati da un negozio: `id, fonte, url, critico, voto, scala, annata_fonte, corrispondenza`)
+  `sito.py` lo legge come i critici, con il nome del negozio e il link.
 - `link_controllati.csv` (e `link_verifica_manuale.csv`): l'esito del controllo dei link ai siti, agli
   shop e alle fonti delle aziende (vedi "Il controllo dei link").
 - `delivery_dispensa.csv`: i 60 prodotti della Dispensa ritrovati nel servizio delivery di Peck, con
@@ -338,6 +343,21 @@ e la pagina «Voti dell'annata 2022 (su Peck c'e' la ...)». Nell'Enoteca ci son
 «Voto: dal piu' alto» (chiavi `vb`, `vn`, `vy` in `docs/vini.json`). Limiti: 21 vini puntano a 10 schede che
 Tannico ha tolto (404) e restano senza voti; per 5 schede non c'e' nessun voto; i vini vecchi (per esempio un
 Sassicaia 1985) mostrano i voti dell'annata che Tannico vende oggi, scritta accanto.
+
+**Le altre fonti di voti (`data/voti_aperti.csv`, `data/voti_enoteche.csv`).** Tre famiglie, sempre separate sul sito:
+*critici* (su 100: critici di Tannico, di un'enoteca o Wine Enthusiast con il nome di chi ha degustato), *Tannico*
+(il suo giudizio, non di un critico) e *utenti* (X-Wines: media delle stelle 1-5, con il numero di voti; solo con
+almeno 10 voti; de Azambuja et al. 2023, doi 10.3390/bdcc7010020, CC0; i voti sono di utenti raccolti sul web nel
+2022, gli autori non dicono da quale sito). Si usano solo le righe `esatta` o `annata diversa` entro 2 anni (stessa
+regola di Tannico; `NV` non conta come annata diversa), mai `da controllare`. Wine Enthusiast e' CC BY-NC-SA 4.0:
+solo uso non commerciale, stessa licenza, fonte citata; **mai il testo delle recensioni**. Il bollino sceglie nell'ordine:
+un critico /100 (Tannico, poi enoteche, poi Wine Enthusiast, «WE 92»), il giudizio di Tannico, gli utenti
+(«Utenti 4,2★»); l'anno compare se l'annata e' diversa da quella di Peck. Colori diversi: critici giallo pieno,
+Tannico giallo chiaro, utenti bianco con bordo. Nella pagina del vino la sezione «Voti» ha i gruppi «Critici»,
+«Tannico», «Utenti (X-Wines)» con fonte e licenza. Nell'Enoteca «Con voto» copre tutte le fonti, «solo critici»
+e' un sotto-filtro (`crit`), e l'ordine per voto non mischia le scale: critici, poi Tannico, poi utenti (le stelle
+x 20 solo per ordinare tra loro). Chiavi in `docs/vini.json`: `vb` testo, `vk` tipo (`c`/`t`/`u`), `vn` numero per
+ordinare, `vf` fonte (titolo del bollino), `vy` annata se diversa.
 
 Il programma `src/sito.py` legge i CSV di `data/` (e le pagine in `data/raw/` per i link alle foto),
 **cancella le pagine generate e le riscrive tutte** (circa 4.200 pagine, 55 MB; circa un minuto): va

@@ -1,5 +1,10 @@
 # Diario del progetto
 
+<!-- Da fare (25/10, richiesta di Davide): sezione "Angolo delle occasioni" = prodotti e vini dove
+Peck costa meno che fuori o al massimo +5%; aggiornamento automatico settimanale con GitHub Actions
+(Winerim, Tannico, shop dei produttori; il delivery richiede login e si aggiorna solo a mano). -->
+
+
 Le decisioni prese, con la data e il perche'. Si aggiunge in fondo, non si riscrive.
 
 ## 24 ottobre 2026
@@ -61,3 +66,6 @@ Le decisioni prese, con la data e il perche'. Si aggiunge in fondo, non si riscr
 - 25 ottobre 2026: abbinati a mano 60 prodotti della Dispensa al delivery (`src/delivery_dispensa.py`, `data/delivery_dispensa.csv`, pubblico): 42 esatti, 18 stesso prodotto con formato diverso o a peso. Regola: nel dubbio non si abbina (lasciati fuori salmone Orcadi, olive Cerignola, coppa e prosciutto a trancio, Parmigiano Vacca bianca, olio Lorenzo 5, carciofini mignon: formato o prezzo non tornano). I 446 prodotti non abbinati sono in `data/locale/delivery_non_in_dispensa.csv`.
 - 25 ottobre 2026: sul sito i prodotti abbinati usano la foto del delivery (collegata, non copiata) al posto del disegno (58 foto) e mostrano «Prezzo Peck: 8 € (180 g)» o «36 € al kg» con la fonte «dal servizio delivery di Peck, 25 ottobre 2026»; se il formato e' diverso la pagina lo dice. Una riga in «Come funziona», aggiornati il piede di pagina e la sezione sulle foto.
 - 25 ottobre 2026: formati sul sito. Chip «Magnum · 1,5 L» accanto al prezzo (schede statiche, cantine, Enoteca JS), una riga per formato; tabella «Formati e prezzi» con litri; Enoteca con filtro «Formato» (`?fmt=`) e ordine «Prezzo al litro»; l'ordine per prezzo confronta a parita' di formato (bottiglie 0,75 L prima) o un formato solo se c'e' il filtro; bottone Tannico con «su Tannico c'e' la 0,75 L» quando ha solo un altro formato (103 vini, chiave `tf`, fuori dal filtro «Su Tannico»); «Come funziona» e README aggiornati. Verificati nel browser: pagina di un magnum, Enoteca a 375 px, pagina Dispensa con foto delivery; nessun errore JS.
+- 25 ottobre 2026: confronto prezzi vini Peck / Tannico (`src/confronto_vini.py` -> `data/confronto/vini_tannico.csv`, 470 righe): per ogni formato Peck si cerca fra i prodotti Tannico dello stesso vino (nome uguale, cantina identica) quello con lo stesso formato e l'annata piu' vicina; prezzi al litro, entrambi con IVA. Confrontabile = stesso vino + stesso litri + annata entro 2 anni: 209 righe (160 con Tannico disponibile), differenza mediana Peck vs Tannico +22,4%. Nessuno scaricamento nuovo.
+
+- 25 ottobre 2026: voti da fonti aperte sul sito (`voti_aperti.csv`, mai `da_controllare`): Wine Enthusiast («WE 92», con nome di chi ha degustato) e utenti X-Wines («Utenti 4,2★», n voti) accanto a Tannico; bollino in ordine critico /100 > giudizio Tannico > utenti, tre colori; pagina vino con gruppi Critici / Tannico / Utenti e licenze; Enoteca con «Con voto» su tutte le fonti, sotto-filtro «solo critici» e ordine per voto per gruppi (scale non mischiate); `sito.py` legge anche `data/voti_enoteche.csv` se c'e' (critici di un negozio, con link). 935 vini con bollino: 119 critici, 157 Tannico, 659 utenti. «Come funziona» e README aggiornati.
