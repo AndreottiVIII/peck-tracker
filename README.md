@@ -33,6 +33,10 @@ Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
   `sito.py` lo legge come i critici, con il nome del negozio e il link.
 - `link_controllati.csv` (e `link_verifica_manuale.csv`): l'esito del controllo dei link ai siti, agli
   shop e alle fonti delle aziende (vedi "Il controllo dei link").
+- `geo.csv` e `geo_regioni_vini.csv` (da `src/geo.py`): le coordinate dei luoghi di produzione (una riga per riga di
+  `aziende.csv` con un luogo noto; `precisione` = `via` o `comune`) e un punto per regione vinicola (vedi «La mappa»).
+- `premi_vini.csv` e `premi_fonti.csv` (da `src/premi.py`): premi e classifiche per i vini della carta e l'elenco delle
+  fonti, usate o no (vedi «Premi e classifiche»).
 - `delivery_dispensa.csv`: i 60 prodotti della Dispensa ritrovati nel servizio delivery di Peck, con
   prezzo, formato e indirizzo della foto (vedi "Il servizio delivery di Peck"). Il catalogo intero del
   delivery **non** e' pubblicato: sta solo sul computer in `data/locale/` (escluso da git).
@@ -305,6 +309,7 @@ quindi va bene sia sotto `/peck-tracker/` su GitHub Pages sia alla radice di un 
 | `enoteca/` | i 3.071 vini, con filtri e Schede / Elenco | 1 |
 | `cantina/<id>/` | una cantina e le sue etichette | 820 |
 | `vino/<id>-<nome>/` | un vino: foto, profilo di degustazione (punti e grafico a ragnatela), formati e prezzi, vini correlati, bottoni Vivino / Wine-Searcher / scheda completa in enoteca | 3.071 |
+| `mappa/` | la mappa dei fornitori (strato «Dispensa») e delle regioni del vino (strato «Enoteca»), con l'elenco per regione sotto; legge `docs/mappa.json` | 1 |
 | `occasioni/` | l'«Angolo delle occasioni»: dove Peck costa meno che altrove (o al massimo +5%), cibo e vini (Tannico, Callmewine, Millesima, Xtrawine), e sotto, chiuso, i 20 casi in cui costa di piu' | 1 |
 | `prezzi/` | «Prezzi confrontati» (voce di menu): TUTTI i confronti, cibo e vini, per categoria, con barra della differenza e filtri; legge `docs/prezzi.json` | 1 |
 | `come-funziona/`, `404.html` | spiegazioni, limiti, link controllati | 2 |
@@ -328,6 +333,37 @@ con la nota «su Tannico c'e' la 0,75 L» (chiave `tf`; non conta per il filtro 
 (`tannico.it/search?q=<cantina + nome>`, stesse parole di Vivino). Nell'Enoteca c'e' il filtro «Su
 Tannico». I prezzi di Tannico compaiono solo nel confronto con quelli di Peck (vedi «Confronto prezzi» qui sotto). I link diretti stanno anche in `docs/vini.json`
 (chiavi `tn`, `ta`, `tf`).
+
+**La mappa (`/mappa/`, voce di menu «Mappa»).** `sito.py` unisce `data/geo.csv` alle pagine dei produttori (la riga di
+`aziende.csv` e' la stessa `(tipo_chiave, chiave)`; piu' righe dello stesso produttore, tutte entro 3 km, diventano un
+punto solo, il piu' preciso) e scrive `docs/mappa.json` (circa 57 KB: 91 fornitori e 135 regioni del vino; il JSON ha per ogni
+fornitore id, nome, comune, coordinate, `pr` = precisione, categoria principale, certezza, prodotti per Peck con id e nome). La pagina
+carica **Leaflet 1.9.4** e **Leaflet.markercluster 1.5.3** da cdnjs, con versione fissata e impronte SRI
+(`SRI` in `src/sito.py`, prese da `api.cdnjs.com`), e le tessere di OpenStreetMap; il disegno lo fa `docs/mappa.js`
+(scritto a mano, come `app.js`). Questa e' l'unica pagina con `<meta name="referrer" content="strict-origin-when-cross-origin">`
+(le tessere di OpenStreetMap chiedono un referrer valido; le altre pagine restano `no-referrer`). Strato **Dispensa**: un
+segno per fornitore, colore = categoria principale tra i suoi prodotti nella Dispensa (`COLORI_CATEGORIA`; le aziende
+senza prodotti usano la categoria di `geo.csv`, convertita con `CAT_GEO_SITO`), grandezza = numero di prodotti, contorno
+tratteggiato se la posizione e' solo il comune; i segni vicini si raggruppano (markercluster, e si aprono a ventaglio se
+identici); il popup ha il nome (link alla pagina del produttore), il comune, i prodotti con i link (fino a 8), la certezza e
+«posizione approssimata al comune» se non e' via. Strato **Enoteca**: un cerchio per regione, raggio = radice delle etichette;
+il popup rimanda all'Enoteca filtrata (`?paese=...&reg=...`; se la regione e' una denominazione contata sotto un'altra, `?q=`).
+Le regioni il cui nome esiste in un altro paese con almeno 5 volte i vini (oggi «Toscana» in Francia, due vini con la
+regione sbagliata nella carta) si lasciano fuori. L'indirizzo `/mappa/#<id produttore>` apre quel segno, `#v-<paese>-<regione>`
+una regione, `#enoteca` lo strato; nelle pagine dei produttori c'e' «Sulla mappa: ... vedi sulla mappa» (solo un link, nessuna mappa
+piccola: le pagine restano leggere). Sotto la mappa l'elenco in HTML, per regione o paese («Lombardia: 12 fornitori»), serve
+senza JavaScript e sul telefono. Se Leaflet o i dati non si caricano la pagina lo dice e l'elenco resta. Senza `geo.csv`
+la pagina non si scrive (il sito si costruisce uguale). I 2 indirizzi di `geo.csv` senza pagina (Ciriè, Isolabona, solo delivery) non sono sulla
+mappa. «Come funziona» ha la sezione «La mappa» (Nominatim, via o comune, correzione di Borgomaro, regioni approssimate, cosa carica la
+pagina). Se si rilancia `src/geo.py` va riapplicata a mano la correzione di «Borgomanaro (IM)» in Borgomaro.
+
+**Premi e classifiche.** `sito.py` legge `data/premi_vini.csv` (id del vino, premio, guida, edizione, annata premiata, posizione, url,
+`corrispondenza` = `esatta` o `annata diversa ±2`) e `premi_fonti.csv`; senza questi file il sito si costruisce uguale. Nella pagina
+del vino il riquadro «Premi e classifiche» (premio, guida, edizione, posizione per le Top 100, annata premiata, link alla fonte) divide
+la stessa annata di Peck dalle altre annate, scritte in chiaro («premiata l'annata 2021, su Peck c'e' la 2019»). Il chip sulle schede
+(`zb`, `zt`, `ze` in `vini.json`: «5 Grappoli», «Top 100 Suckling #12», «Triplo faccino DoctorWine», «+N» se ce ne sono altri) c'e' solo
+per i premi `esatta`; il filtro «Con premi (stessa annata)» dell'Enoteca (`?premi=1`) usa gli stessi. Si copiano solo i nomi dei
+premi e le posizioni, mai i testi. «Come funziona» elenca le fonti usate e quelle bloccate o vietate.
 
 **Confronto prezzi (produttori e Tannico).** Legge `data/confronto/risultati_*.csv` (tutti i file che trova: ogni gruppo di
 produttori ne scrive uno; colonne in `data/confronto/ISTRUZIONI.md`) e `data/confronto/vini_tannico.csv` (scritto da
@@ -492,12 +528,16 @@ possono riscaricare, riscrive il sito con `python -I src/sito.py` e, **solo se q
 | `voti_tannico` | i voti dalle schede Tannico: `tannico_voti.csv` | `src/tannico.py voti`: si scaricano solo le schede degli indirizzi abbinati che non ci sono ancora (3 s di pausa); `data_raccolta` e' il giorno in cui la scheda e' stata scaricata |
 | `confronto_vini` | confronto prezzi Peck / Tannico al litro: `confronto/vini_tannico.csv` | `src/confronto_vini.py` (col catalogo appena scaricato) |
 | `prezzi_produttori` | prezzi dei produttori nei confronti del cibo: `confronto/risultati_*.csv` | `src/aggiorna_prezzi_produttori.py`, vedi sotto |
+| `box_valore` | il valore spacchettato delle pagine dello shop: `confronto/box_valore.csv` e `box_valore_righe.csv` | `src/box_valore.py` (tutto offline), dopo i prezzi riletti |
 | `voti_aperti` | `voti_aperti.csv` (Wine Enthusiast, X-Wines) | `src/voti_aperti.py abbina`, **solo se** i dataset sono su disco (nella cache); altrimenti il file resta com'e'. I dataset non cambiano: per averli sul runner una volta, «Run workflow» con *scarica_voti_aperti* |
 | `voti_enoteche` | `voti_enoteche.csv` (voti dai negozi) | **spento** finche' non si imposta la variabile del repository `VOTI_ENOTECHE=si` (o si spunta *voti_enoteche* in «Run workflow»); solo schede nuove, mai Berry Bros & Rudd (ha una finestra oraria) |
+| `confronto_enoteche` | prezzi Peck / negozi online: `confronto/vini_enoteche_prezzi.csv` | `src/confronto_vini_enoteche.py`, legge solo le schede dei negozi gia' salvate: se non sono su disco il file resta com'e' |
 | `foto_shop` | le pagine dello shop Peck da cui `sito.py` prende le foto | `src/fetch.py` (10 s di pausa, circa 10 minuti) **solo se mancano** in `data/raw/`, cioe' su un computer pulito o con la cache persa |
 | `sito` | tutto `docs/` | `src/sito.py`; se questo passo fallisce il job si ferma e non pubblica niente |
 
-**Cosa NON si aggiorna da solo:** i prezzi del delivery di Peck (serve il login: si salvano a mano e si rilancia
+**Cosa NON si aggiorna da solo:** `confronto/alternative_7.csv` (usa il catalogo del delivery in `data/locale/` e il catalogo Brezzo salvato),
+`risultati_7.py` e gli altri programmi che scrivono a mano i file `risultati_*.csv` (rilanciarli cancellerebbe i prezzi
+riletti), i prezzi del delivery di Peck (serve il login: si salvano a mano e si rilancia
 `src/delivery_dispensa.py`), le pagine dello shop Peck e i passi 1 e 2 (`extract.py`, `aziende.csv`), il controllo dei
 link, i bolli CE, e gli abbinamenti fatti a mano. Il sito resta una fotografia: i prezzi di Peck del delivery, per esempio,
 sono sempre quelli del 25 ottobre 2026.
@@ -523,13 +563,16 @@ Per ogni riga di `data/confronto/risultati_*.csv` che ha un `url_produttore`, un
 (il giorno in cui il prezzo e' stato riletto, anche se e' uguale). Come legge il prezzo, nell'ordine: **Shopify**
 (`<indirizzo>.json`, poi `.js`), **WooCommerce** (API pubblica dello store, per slug), altrimenti il **JSON-LD** (`Offer`)
 della pagina. Se il prodotto ha piu' formati sceglie quello con lo stesso peso della riga o quello che aveva gia' quel
-prezzo; nel dubbio la riga non si tocca. Una variazione oltre -50% / +100% non si applica (si segnala nel log). Ogni
+prezzo (per WooCommerce legge anche le varianti); nel dubbio la riga non si tocca. Lo stesso indirizzo puo' stare in piu'
+righe: ognuna si decide col proprio formato e il proprio prezzo vecchio. Una variazione oltre -50% / +100% non si applica (si segnala nel log). Ogni
 prezzo cambiato finisce in `data/confronto/storico_prezzi.csv` (`data`, `url`, `prezzo_vecchio`, `prezzo_nuovo`).
 
 - **robots.txt**, riletto per ogni sito a ogni esecuzione: si rispetta il gruppo `*` e anche le sezioni dedicate agli agenti
   AI di Anthropic (ClaudeBot, Claude-Web, Claude-User, Claude-SearchBot, anthropic-ai): se una vieta la pagina il sito si
   salta, senza cambiare User-Agent. Si rispetta il Crawl-delay; un robots.txt che non risponde (errore del server) vuol
-  dire che il sito si salta. `fornofollador.it` e `casaiuorio.it` si saltano sempre.
+  dire che il sito si salta. `fornofollador.it`, `casaiuorio.it` e `tartuflanghe.com` (il suo robots.txt rimanda ad `agents.md`,
+  che chiede ai robot di identificarsi in un modo che non possiamo fare) non si leggono mai: i prezzi restano quelli scritti e la
+  `nota` della riga dice «prezzo del produttore non aggiornato automaticamente».
 - 2 secondi di pausa fra le richieste, un sito alla volta, User-Agent «peck-tracker research; non-commercial». Con 403 o
   429 persistenti quel sito si salta fino alla settimana dopo. Niente login, niente aggiramento dei blocchi.
 - Un sito spento lascia la riga com'e' (con la sua vecchia `data`), cosi' si vede che non e' stata riletta.
@@ -553,6 +596,7 @@ python -I src/tannico.py voti     # Tannico: scarica le schede dei vini abbinati
 python -I src/delivery_foto.py  # delivery: scarica le foto del catalogo salvato (serve data/locale/delivery_catalogo_2026-10-25.json)
 python -I src/delivery_dispensa.py  # delivery: riscrive data/delivery_dispensa.csv e i file in data/locale/
 python -I src/sito.py           # sito: cancella e riscrive tutte le pagine di docs/ (e docs/vini.json)
+python -I src/aggiorna_settimanale.py  # tutti i passi di aggiornamento (vini, Tannico, prezzi dei produttori...) e poi il sito, vedi «Aggiornamento automatico»
 ```
 
 Il catalogo del delivery (`data/locale/delivery_catalogo_2026-10-25.json`) non si rigenera con un programma: si salva a

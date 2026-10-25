@@ -1300,7 +1300,7 @@ def costruisci_vini(box_per_nome):
 
 def json_vini(vini):
     """La versione compatta che il browser scarica per i filtri dell'enoteca (docs/vini.json)."""
-    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "tf", "vb", "vn", "vk", "vf", "vy")
+    chiavi = ("id", "n", "a", "t", "p", "r", "c", "u", "s", "ph", "f", "pr", "d", "tt", "l", "tn", "ta", "tf", "vb", "vn", "vk", "vf", "vy", "zb", "zt", "ze")
     return {
         "meta": vini["meta"],
         "cantine": [{"id": c["id"], "nome": c["nome"], "n": c["n"]} for c in vini["cantine"]],
@@ -1317,7 +1317,7 @@ STATI_TESTO = {"certa": "certa", "probabile": "probabile", "non trovata": "non t
 TIPI_CHIAVE = {"indirizzo": "Indirizzo", "bollo_ce": "Bollo CE", "produttore": "Produttore nominato"}
 MENU = [("dispensa", "Dispensa", "dispensa/"), ("box", "Box regalo", "box/"),
         ("produttori", "Produttori", "produttori/"), ("enoteca", "Enoteca", "enoteca/"),
-        ("occasioni", "Occasioni", "occasioni/"), ("prezzi", "Prezzi confrontati", "prezzi/"), ("come-funziona", "Come funziona", "come-funziona/")]
+        ("mappa", "Mappa", "mappa/"), ("occasioni", "Occasioni", "occasioni/"), ("prezzi", "Prezzi confrontati", "prezzi/"), ("come-funziona", "Come funziona", "come-funziona/")]
 GIALLO_PECK = "#FFCD45"    # --giallo-peck nel CSS di peck.it
 MARRONE_PECK = "#5E4824"   # --marrone-peck nel CSS di peck.it
 
@@ -1476,7 +1476,7 @@ def scrivi_pagina(rel, contenuto, tipo):
     CONTA[tipo] += 1
 
 
-def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
+def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False, referrer="no-referrer", testa_extra="", piede_extra=""):
     prof = rel.count("/") + 1 if rel else 0
     r = PREFISSO_SITO if assoluto else ("../" * prof if prof else "./")
     titolo_pagina = ("Peck Tracker – chi fa davvero quello che vende Peck" if home
@@ -1495,14 +1495,14 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
 <title>{H(titolo_pagina)}</title>
 <meta name="description" content="{H(descr)}">
 <meta name="theme-color" content="{GIALLO_PECK}">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="{referrer}">
 <link rel="canonical" href="{H(canon)}">
 <link rel="icon" href="{FAVICON}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{FONT}">
 <link rel="stylesheet" href="{r}style.css">
-</head>
+{testa_extra}</head>
 <body data-radice="{r}">
 <a class="salta" href="#principale">Vai al contenuto</a>
 
@@ -1535,7 +1535,7 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False):
   </div>
 </footer>
 <script>{carica}</script>
-{redirect}<script src="{r}app.js" defer></script>
+{redirect}{piede_extra}<script src="{r}app.js" defer></script>
 </body>
 </html>
 """
@@ -1975,6 +1975,9 @@ def pagina_produttore(z, items, az, r):
     dl += f"<dt>Dove</dt><dd>{H(dove_txt) if (dove or z['paese']) else 'sede non indicata nei dati di Peck'}</dd>"
     if z["id"] != "peck":
         dl += f"<dt>Negozio online</dt><dd>{H(testo_shop(z))}</dd>"
+    if z.get("mappa"):
+        prec = ("posizione a livello di via" if z["mappa"]["precisione"] == "via" else "posizione approssimata al comune")
+        dl += f'<dt>Sulla mappa</dt><dd>{H(prec)} · <a href="{r}mappa/#{H(z["id"])}">vedi sulla mappa</a></dd>'
     righe = "".join(
         f'<li><a class="riga-el" href="{r}prodotto/{it["id"]}/"><span><span class="cat">{H(cap(it["categoria"]))}</span><br>'
         f'<span class="nome">{H(it["nome"])}</span></span><span class="meta">'
@@ -2143,6 +2146,121 @@ def blocco_voti(w):
             f'<ul class="fonti meta">' + "".join(f"<li>{f}</li>" for f in fonti) + '</ul></section>')
 
 
+# ---------------------------------------------------------------------------
+# Premi e classifiche (data/premi_vini.csv, data/premi_fonti.csv): solo il nome del premio, la posizione,
+# l'edizione e l'annata premiata; mai il testo delle recensioni. Se i file mancano il sito si costruisce uguale.
+# ---------------------------------------------------------------------------
+
+PREMI_ORDINE = ("Best in Show", "Top 100", "Triplo faccino", "5 Grappoli", "Doppio faccino", "Faccino")
+GUIDE_BREVI = {"DoctorWine Guida Essenziale ai Vini d'Italia": "DoctorWine", "James Suckling Top 100": "Suckling",
+               "Bibenda (Fondazione Italiana Sommelier)": "Bibenda", "Decanter World Wine Awards": "Decanter"}
+
+
+def livello_premio(p):
+    for i, k in enumerate(PREMI_ORDINE):
+        if p["premio"].startswith(k):
+            return i
+    return len(PREMI_ORDINE)
+
+
+def posizione_premio(p):
+    return int(p["posizione"]) if (p.get("posizione") or "").isdigit() else 999
+
+
+def ordine_premio(p):
+    return (livello_premio(p), posizione_premio(p), -int(p["edizione"] or 0))
+
+
+def guida_breve(p):
+    return GUIDE_BREVI.get(p["guida"], p["guida"])
+
+
+def testo_chip_premio(p):
+    """«Top 100 Suckling #12», «Triplo faccino DoctorWine», «5 Grappoli», «Best in Show Decanter»."""
+    g = guida_breve(p)
+    if p["premio"].startswith("Top 100"):
+        return f"Top 100 {g}" + (f" #{p['posizione']}" if p.get("posizione") else "")
+    if "faccino" in p["premio"].lower() or p["premio"] == "Best in Show":
+        return f"{p['premio']} {g}"
+    return p["premio"]
+
+
+def carica_premi():
+    """-> (dict id vino -> lista di premi, lista delle fonti). Vuoti se i file non ci sono."""
+    premi, fonti = defaultdict(list), []
+    if (DATI / "premi_vini.csv").exists():
+        for r in leggi_csv("premi_vini"):
+            r["esatta"] = r["corrispondenza"].strip() == "esatta"
+            try:
+                premi[int(r["id"])].append(r)
+            except ValueError:
+                continue
+    if (DATI / "premi_fonti.csv").exists():
+        fonti = leggi_csv("premi_fonti")
+    for lista in premi.values():
+        lista.sort(key=lambda p: (not p["esatta"],) + ordine_premio(p))
+    return premi, fonti
+
+
+def assegna_premi(V, premi):
+    """Su ogni vino: w['premi'] (tutti) e, se c'e' un premio della stessa annata, il chip per le schede
+    (zb = testo, zt = titolo con tutti i premi della stessa annata, ze = 1; stessi nomi in vini.json)."""
+    n_chip = 0
+    for w in V["vini"]:
+        lista = premi.get(w["id"])
+        if not lista:
+            continue
+        w["premi"] = lista
+        esatti = [p for p in lista if p["esatta"]]
+        if esatti:
+            migliore = min(esatti, key=ordine_premio)
+            altri = len(esatti) - 1
+            w["zb"] = testo_chip_premio(migliore) + (f" +{altri}" if altri else "")
+            w["zt"] = "; ".join(f"{p['premio']}, {guida_breve(p)} {p['edizione']}" + (f", posizione {p['posizione']}" if p.get("posizione") else "")
+                                for p in sorted(esatti, key=ordine_premio))
+            w["ze"] = 1
+            n_chip += 1
+    return n_chip
+
+
+def badge_premio(w):
+    if "zb" not in w:
+        return ""
+    return f' <span class="premio-chip" title="{H(w["zt"])}">{H(w["zb"])}</span>'
+
+
+def blocco_premi(w, r):
+    ps = w.get("premi")
+    if not ps:
+        return ""
+
+    def riga(p):
+        pos = f" · posizione <strong>{H(p['posizione'])}</strong>" if p.get("posizione") else ""
+        if p["esatta"]:
+            annata = f" · annata {H(p['annata_premiata'] or w['a'] or 'senza annata')}"
+        else:
+            annata = (f" · <strong>premiata l’annata {H(p['annata_premiata'])}</strong> "
+                      f"(su Peck c’è la {H(w['a'] or 'senza annata')})")
+        fonte = ext(p["url_fonte"], "fonte")
+        return riga_voto(f"{H(guida_breve(p))}, edizione {H(p['edizione'])}",
+                         f"<strong>{H(p['premio'])}</strong>{pos}{annata}",
+                         (f' <span class="meta">· {fonte}</span>' if fonte else ""))
+    esatti = [p for p in ps if p["esatta"]]
+    altri = [p for p in ps if not p["esatta"]]
+    corpo = ""
+    if esatti:
+        corpo += '<h3>Stessa annata della bottiglia di Peck</h3><ul class="voti">' + "".join(riga(p) for p in esatti) + "</ul>"
+    if altri:
+        corpo += ('<h3>Altre annate dello stesso vino</h3>'
+                  f'<p class="avviso-annata"><strong>Premi di un’altra annata</strong> (su Peck c’è la {H(w["a"] or "senza annata")}): '
+                  'riguardano il vino, non la bottiglia della carta, e vanno letti come i voti di Tannico di un’annata diversa.</p>'
+                  '<ul class="voti">' + "".join(riga(p) for p in altri) + "</ul>")
+    return (f'<section class="sezione" id="premi"><h2>Premi e classifiche</h2>{corpo}'
+            '<p class="meta">Copiamo solo il nome del premio, la posizione in classifica, l’edizione e l’annata premiata: '
+            'mai il testo delle recensioni. Le fonti e quelle che non abbiamo potuto usare sono elencate in '
+            f'«<a href="{r}come-funziona/#premi">Come funziona</a>».</p></section>')
+
+
 def url_foto_vino(w):
     if not w["ph"]:
         return ""
@@ -2164,7 +2282,7 @@ def scheda_vino(w, r):
     return (f'<article class="scheda vino">'
             f'{foto_html(url_foto_vino(w), "Bottiglia: " + w["n"] + (" " + w["a"] if w["a"] else ""), "vino")}'
             f'<div class="corpo"><div class="col-a"><p class="tipo-riga">{tipo_chip(w["tipo"])}'
-            f'{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}</p>'
+            f'{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}{badge_premio(w)}</p>'
             f'<h3 class="nome"><a class="vai" href="{pagina}">{H(w["n"])}</a></h3></div>'
             f'<p class="meta"><span class="col-b"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a></span>'
             f'<span class="col-c">{H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</span></p>'
@@ -2191,6 +2309,7 @@ def pagina_enoteca(V):
         ctl_spunta("tan", "Su Tannico", "") +
         ctl_spunta("voto", "Con voto", "") +
         ctl_spunta("crit", "solo critici", "", "sotto") +
+        (ctl_spunta("premi", "Con premi (stessa annata)", "") if M.get("n_premi") else "") +
         ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
                                      ("litro-su", "Prezzo al litro: dal più basso"),
                                      ("annata-giu", "Annata: dalla più recente"), ("annata-su", "Annata: dalla più vecchia"),
@@ -2343,7 +2462,7 @@ def pagina_vino(w, V, r, correlati, CV):
 <div class="dettaglio">
 {foto_html(url_foto_vino(w), "Bottiglia: " + nome_completo, "vino")}
 <div>
-<p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}</p>
+<p>{tipo_chip(w["tipo"])}{(" <span class=meta>· " + H(w["a"]) + "</span>") if w["a"] else ""}{badge_voto(w)}{badge_premio(w)}</p>
 <h1>{H(w["n"])}</h1>
 <p class="originale"><a href="{r}cantina/{c["id"]}/">{H(c["nome"])}</a> · {H(" · ".join(x for x in (w["r"], w["paese"]) if x))}</p>
 <dl class="dati">{uve}<dt>Prezzo</dt><dd><span class="prezzo">{prezzo_html}</span> · {stock}</dd></dl>
@@ -2354,6 +2473,7 @@ def pagina_vino(w, V, r, correlati, CV):
 </div>
 {confronto_vino(w, CV)}
 {blocco_voti(w)}
+{blocco_premi(w, r)}
 {profilo}
 {formati}
 {dettagli}
@@ -3434,7 +3554,7 @@ def pagina_prezzi(righe, riep, r):
 # Come funziona
 # ---------------------------------------------------------------------------
 
-def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico=(), az=None, riep=None, n_alt=0, n_bv=0):
+def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico=(), az=None, riep=None, n_alt=0, n_bv=0, extra=""):
     conta = Counter(d["stato"] for d in dispensa)
     def _con(k):
         return sum(1 for w in V["vini"] if w.get("voti") and w["voti"][k])
@@ -3451,7 +3571,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storic
                if VOTI["en"] else "")
     n_delivery = sum(1 for d in dispensa if d.get("delivery"))
     n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else []) +         [f"confronto/{n}" for n in ("vini_enoteche_prezzi", "alternative_7", "box_valore", "box_valore_righe") if (DATI / "confronto" / f"{n}.csv").exists()] +         [n for n in ("ritagli", "storico") if (DATI / f"{n}.csv").exists()]
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + [n for n in ("geo", "geo_regioni_vini", "premi_vini", "premi_fonti") if (DATI / f"{n}.csv").exists()] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else []) +         [f"confronto/{n}" for n in ("vini_enoteche_prezzi", "alternative_7", "box_valore", "box_valore_righe") if (DATI / "confronto" / f"{n}.csv").exists()] +         [n for n in ("ritagli", "storico") if (DATI / f"{n}.csv").exists()]
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -3527,7 +3647,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storic
 Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enoteche, poi Wine Enthusiast), altrimenti il giudizio di Tannico, altrimenti gli utenti (solo con almeno 10 voti). Il voto si usa solo se l’annata è quella di Peck o dista al massimo 2 anni (per i vini senza annata, solo se manca da entrambe le parti); se è diversa, l’anno è scritto accanto al voto. Per le annate più lontane i voti di Tannico restano nella pagina del vino come riferimento, senza bollino; quelli delle altre fonti non li usiamo. Nell’Enoteca «Con voto» include tutte le fonti, «solo critici» tiene solo chi ha un critico; l’ordine per voto non mischia le scale (critici, poi Tannico, poi utenti; le stelle sono moltiplicate per 20 solo per metterle in ordine tra loro).</li>
 </ul>
 
-{sezione_confronto}{sezione_datate}
+{sezione_confronto}{sezione_datate}{extra}
 <h2>Quanto siamo sicuri</h2>
 <p>Ogni azienda ha un’etichetta:</p>
 <ul>
@@ -3590,12 +3710,258 @@ def pagina_404():
 
 
 # ---------------------------------------------------------------------------
+# Mappa (/mappa/): i fornitori della Dispensa (data/geo.csv) e le regioni del vino (data/geo_regioni_vini.csv).
+# Le coordinate le scrive src/geo.py; qui si collegano alle pagine dei produttori e si scrive docs/mappa.json,
+# che legge docs/mappa.js (scritto a mano). Senza i due CSV la pagina non si scrive e il sito si costruisce uguale.
+# ---------------------------------------------------------------------------
+
+CDN = "https://cdnjs.cloudflare.com/ajax/libs/"
+LEAFLET_V, CLUSTER_V = "1.9.4", "1.5.3"
+# impronte SRI date da api.cdnjs.com (campo sri) per le versioni fissate qui sopra
+SRI = {
+    "leaflet.min.css": "sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==",
+    "leaflet.min.js": "sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==",
+    "MarkerCluster.min.css": "sha512-ENrTWqddXrLJsQS2A86QmvA17PkJ0GVm1bqj5aTgpeMAfDKN2+SIOLpKG8R/6KkimnhTb+VW5qqUHB/r1zaRgg==",
+    "leaflet.markercluster.min.js": "sha512-TiMWaqipFi2Vqt4ugRzsF8oRoGFlFFuqIi30FFxEPNw58Ov9mOy6LgC05ysfkxwLE0xVeZtmr92wVg9siAFRWA==",
+}
+# categorie di data/geo.csv -> categorie della Dispensa (le stesse dei filtri del sito)
+CAT_GEO_SITO = {
+    "conserve e sott'olio": "conserve e sottoli", "olio e aceto": "olio e aceto", "vino e spumanti": "vini e spumanti",
+    "confetture, miele e dolci": "conserve e sottoli", "pasta, riso e legumi": "pasta e riso",
+    "dolci da forno": "dolci e lievitati", "salumi": "salumi", "pesce e conserve di mare": "pesce",
+    "cioccolato e canditi": "cioccolato", "formaggi": "formaggi", "altro": CATEGORIA_ALTRO,
+    "frutta secca": "frutta secca", "distillati e amari": "distillati",
+}
+COLORI_CATEGORIA = {
+    "conserve e sottoli": "#c8553d", "olio e aceto": "#6a8f3a", "vini e spumanti": "#8e2c5a",
+    "pasta e riso": "#d4a017", "dolci e lievitati": "#e68fb0", "salumi": "#a3262a", "pesce": "#2a7ab0",
+    "cioccolato": "#4a2f1f", "formaggi": "#8c6bc0", "frutta secca": "#2f9e8f", "distillati": "#5a6b7a",
+    "tè e caffè": "#9a7b4f", CATEGORIA_ALTRO: "#8a8a8a",
+}
+MAPPA_NOTE_A_MANO = {  # chiave di geo.csv -> nota mostrata nel popup
+    "Via Pellegrini 4, Borgomanaro (IM)": "Peck scrive «Borgomanaro (IM)»: è Borgomaro (IM), posizione corretta a mano.",
+}
+MAX_PRODOTTI_POPUP = 8
+
+
+def costruisci_mappa(produttori, items, riga_a_azienda, V):
+    """-> dict con i fornitori e le regioni del vino pronti per il JSON e per l'elenco; mette z['mappa'] su ogni produttore.
+    None se data/geo.csv non c'e'."""
+    if not (DATI / "geo.csv").exists():
+        return None
+    ids = {z["id"]: z for z in produttori}
+    per_az, scartate = defaultdict(list), []
+    for r in leggi_csv("geo"):
+        aid = riga_a_azienda.get((r["tipo_chiave"], nz(r["chiave"])))
+        if aid in ids:
+            per_az[aid].append(r)
+        else:
+            scartate.append(r["chiave"])
+    fornitori = []
+    for aid, rs in per_az.items():
+        z = ids[aid]
+        best = sorted(rs, key=lambda r: r["precisione"] != "via")[0]     # il punto piu' preciso (poi il primo)
+        prod = sorted((items[i] for i in z["prodotti"] if i in items), key=lambda x: nz(x["nome"]))
+        cats = Counter(it["categoria"] for it in prod)
+        if cats:
+            principale = sorted(cats, key=lambda c: (-cats[c], ORDINE_CATEGORIE.index(c) if c in ORDINE_CATEGORIE else 99))[0]
+        else:
+            geo_cat = (best["categorie"].split(";")[0] or "altro").strip()
+            principale = CAT_GEO_SITO.get(geo_cat, CATEGORIA_ALTRO)
+        elenco_cat = sorted(cats, key=lambda c: (-cats[c], c)) or [principale]
+        nome = z["nome"] if z["trovata"] else "Azienda non identificata"
+        if not z["trovata"] and z["chiavi"]:
+            nome += f" ({z['chiavi'][0]['chiave']})"
+        regione = regione_di(best["provincia"], best["paese"]) or best["paese"]
+        nota = MAPPA_NOTE_A_MANO.get(best["chiave"], "")
+        m = re.search(r"\[comune scritto '([^']+)', usato '([^']+)'\]", best["indirizzo_usato"])
+        if m and not nota:
+            nota = f"Peck scrive «{m.group(1)}»: il comune è {m.group(2)}."
+        f = {"i": aid, "n": nome, "c": best["comune"], "pv": best["provincia"] if best["paese"] == "Italia" else "",
+             "rg": regione, "pa": best["paese"], "la": round(float(best["lat"]), 5), "lo": round(float(best["lon"]), 5),
+             "pr": best["precisione"], "ct": principale, "cs": elenco_cat, "ce": z["certezza"], "np": len(prod),
+             "pd": [[it["id"], it["nome"]] for it in prod[:MAX_PRODOTTI_POPUP]], "fz": 1 if z.get("fuori") else 0}
+        if nota:
+            f["no"] = nota
+        fornitori.append(f)
+        z["mappa"] = {"precisione": best["precisione"], "comune": best["comune"]}
+    fornitori.sort(key=lambda f: nz(f["n"]))
+
+    # --- regioni del vino
+    coppie = {(p, rg) for p, rg in V["meta"]["regioni"]}
+    paesi_di = defaultdict(set)
+    for p, rg in coppie:
+        paesi_di[rg].add(p)
+    n_vini_reg = Counter((w["paese"], w["r"]) for w in V["vini"] if w["r"])
+    vini, escluse = [], []
+    if (DATI / "geo_regioni_vini.csv").exists():
+        for r in leggi_csv("geo_regioni_vini"):
+            p, rg = r["paese"], r["regione"]
+            altri_paesi = [(n_vini_reg[(pp, rg)], pp) for pp in paesi_di.get(rg, ()) if pp != p]
+            if (p, rg) in coppie and altri_paesi and max(altri_paesi)[0] >= 5 * max(n_vini_reg[(p, rg)], 1):
+                escluse.append((p, rg))     # es. «Toscana» in Francia: errore della carta, la regione vera e' in Italia
+                continue
+            if (p, rg) in coppie:
+                q = f"?paese={quote(p)}&reg={quote(rg)}"
+            elif paesi_di.get(rg):          # il nome e' una regione di un altro paese: abbinamento incoerente, fuori
+                escluse.append((p, rg))
+                continue
+            else:                           # denominazione contata sotto un'altra: nell'Enoteca si cerca per nome
+                q = f"?q={quote(rg)}"
+            vini.append({"i": "v-" + slug(f"{p} {rg}"), "p": p, "r": rg, "la": float(r["lat"]), "lo": float(r["lon"]),
+                         "nc": int(r["n_cantine"]), "ne": int(round(float(r["n_etichette"]))),
+                         "ma": 1 if r["coordinate_da"].startswith("manuale") else 0, "q": q})
+    vini.sort(key=lambda v: (-v["ne"], v["r"]))
+    return {"fornitori": fornitori, "vini": vini, "scartate": scartate, "escluse": escluse}
+
+
+def json_mappa(M):
+    cat_n = Counter(f["ct"] for f in M["fornitori"])
+    return {
+        "meta": {"fonte": "OpenStreetMap Nominatim (coordinate), tessere © OpenStreetMap contributors",
+                 "categorie": [[c, cap(c), COLORI_CATEGORIA.get(c, "#8a8a8a"), n] for c, n in
+                               sorted(cat_n.items(), key=lambda t: (-t[1], t[0]))],
+                 "n_fornitori": len(M["fornitori"]), "n_regioni": len(M["vini"])},
+        "fornitori": M["fornitori"], "vini": M["vini"],
+    }
+
+
+def pagina_mappa(M, r):
+    forn, vini = M["fornitori"], M["vini"]
+    n_via = sum(1 for f in forn if f["pr"] == "via")
+    cat_n = Counter(f["ct"] for f in forn)
+    legenda = "".join(
+        f'<li><span class="pin-leg" style="--c:{COLORI_CATEGORIA.get(c, "#8a8a8a")}"></span> {H(cap(c))} <span class="meta">({n})</span></li>'
+        for c, n in sorted(cat_n.items(), key=lambda t: (-t[1], t[0])))
+    # elenco dei fornitori per regione (o paese)
+    gruppi = defaultdict(list)
+    for f in forn:
+        gruppi[f["rg"] or f["pa"]].append(f)
+    html_forn = ""
+    for g, lst in sorted(gruppi.items(), key=lambda t: (-len(t[1]), t[0])):
+        righe = ""
+        for f in lst:
+            dove = f["c"] + (f" ({f['pv']})" if f["pv"] else "")
+            prodotti = (f"{f['np']} {'prodotto' if f['np'] == 1 else 'prodotti'}" if f["np"] else "fuori dallo shop del 2026")
+            appr = "" if f["pr"] == "via" else " · posizione approssimata al comune"
+            righe += (f'<li><a href="{r}produttore/{H(f["i"])}/">{H(f["n"])}</a> '
+                      f'<span class="meta">— {H(dove)} · {H(f["ct"])} · {H(prodotti)}{H(appr)}</span> '
+                      f'<a class="sulla-mappa" href="#{H(f["i"])}" hidden>sulla mappa</a></li>')
+        html_forn += (f'<details class="gruppo-mappa"><summary>{H(g)}: {conta_testo(len(lst), "fornitore", "fornitori")}</summary>'
+                      f'<ul>{righe}</ul></details>')
+    per_paese = defaultdict(list)
+    for v in vini:
+        per_paese[v["p"]].append(v)
+    html_vini = ""
+    for p, lst in sorted(per_paese.items(), key=lambda t: (-sum(v["ne"] for v in t[1]), t[0])):
+        righe = ""
+        for v in lst:
+            righe += (f'<li><strong>{H(v["r"])}</strong> <span class="meta">— {v["nc"]} {"cantina" if v["nc"] == 1 else "cantine"} · '
+                      f'circa {v["ne"]} {"etichetta" if v["ne"] == 1 else "etichette"}</span> · '
+                      f'<a href="{r}enoteca/{H(v["q"])}">vedi i vini</a> '
+                      f'<a class="sulla-mappa" href="#{H(v["i"])}" hidden>sulla mappa</a></li>')
+        html_vini += (f'<details class="gruppo-mappa"><summary>{H(p)}: {conta_testo(len(lst), "regione", "regioni")}, '
+                      f'circa {num(sum(v["ne"] for v in lst))} etichette</summary><ul>{righe}</ul></details>')
+    corpo = f"""<section class="pagina-mappa">
+<h1 class="titolo-pagina">Mappa</h1>
+<p class="intro">Dove lavorano i fornitori dei prodotti di Peck ({len(forn)} luoghi, quasi tutti in Italia) e da quali regioni vengono i vini della carta dell’enoteca. I punti vengono da OpenStreetMap: per {n_via} fornitori abbiamo trovato la via, per gli altri {len(forn) - n_via} solo il comune, e il punto è il centro del paese (segno tratteggiato). Le regioni del vino sono centri approssimati, non cantine. Come sono stati trovati: «<a href="{r}come-funziona/#mappa">Come funziona</a>».</p>
+<div class="strati" id="strati" role="group" aria-label="Che cosa mostrare sulla mappa" hidden>
+<button type="button" class="strato" data-strato="dispensa" aria-pressed="true">Dispensa <span class="meta">{len(forn)} fornitori</span></button>
+<button type="button" class="strato" data-strato="enoteca" aria-pressed="false">Enoteca <span class="meta">{len(vini)} regioni</span></button>
+</div>
+<p class="avviso-annata" id="mappa-msg" role="status" hidden></p>
+<div id="mappa" class="mappa" role="region" aria-label="Mappa dei fornitori di Peck e delle regioni del vino" hidden></div>
+<noscript><p class="avviso-annata">Per vedere la mappa serve JavaScript. Qui sotto trovi lo stesso elenco, per regione e per paese.</p></noscript>
+<div class="legenda" id="leg-dispensa">
+<p class="meta">Colore: categoria principale dei prodotti che il fornitore fa per Peck. Grandezza: quanti prodotti. Segno pieno: via trovata; <span class="pin-leg appr"></span> segno tratteggiato: solo il comune, posizione approssimata.</p>
+<ul class="leg-cat">{legenda}</ul>
+</div>
+<div class="legenda" id="leg-enoteca" hidden>
+<p class="meta">Un cerchio per regione del vino: più è grande, più etichette ci sono nella carta dell’enoteca. Il punto è il centro approssimato della regione; le regioni fuori dall’Europa si vedono allontanando la mappa.</p>
+</div>
+<p class="meta">Mappa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap{sr_nuova_scheda()}</a> contributors, con la libreria Leaflet.</p>
+
+<h2 class="sezione-titolo">Dispensa: i fornitori, per regione e per paese</h2>
+<p class="meta">Ogni nome porta alla pagina del produttore. Il numero è quello dei prodotti che fa per Peck nello shop online.</p>
+{html_forn}
+
+<h2 class="sezione-titolo">Enoteca: le regioni del vino</h2>
+<p class="meta">Il numero di etichette è approssimato: una cantina con più regioni divide le sue etichette in parti uguali, e le denominazioni piccole sono contate nella regione che le contiene. «Vedi i vini» apre l’Enoteca filtrata.</p>
+{html_vini}
+</section>"""
+    descr = (f"La mappa dei {len(forn)} luoghi dove lavorano i fornitori di Peck e delle regioni da cui vengono i vini dell’enoteca, "
+             f"con i prodotti di ognuno e quanto è precisa la posizione. {AVVISO}")
+    return corpo, descr
+
+
+def testa_mappa():
+    return (f'<link rel="stylesheet" href="{CDN}leaflet/{LEAFLET_V}/leaflet.min.css" integrity="{SRI["leaflet.min.css"]}" '
+            f'crossorigin="anonymous">\n'
+            f'<link rel="stylesheet" href="{CDN}leaflet.markercluster/{CLUSTER_V}/MarkerCluster.min.css" '
+            f'integrity="{SRI["MarkerCluster.min.css"]}" crossorigin="anonymous">\n')
+
+
+def piede_mappa(r):
+    return (f'<script src="{CDN}leaflet/{LEAFLET_V}/leaflet.min.js" integrity="{SRI["leaflet.min.js"]}" crossorigin="anonymous" defer></script>\n'
+            f'<script src="{CDN}leaflet.markercluster/{CLUSTER_V}/leaflet.markercluster.min.js" '
+            f'integrity="{SRI["leaflet.markercluster.min.js"]}" crossorigin="anonymous" defer></script>\n'
+            f'<script src="{r}mappa.js" defer></script>\n')
+
+
+def sezione_mappa_html(M):
+    if not M:
+        return ""
+    forn, vini = M["fornitori"], M["vini"]
+    n_via = sum(1 for f in forn if f["pr"] == "via")
+    n_man = sum(1 for v in vini if v["ma"])
+    senza = len(M["scartate"])
+    esc_txt = (f" Una regione con un nome incoerente col paese ({H(', '.join(f'{rg} ({p})' for p, rg in M['escluse']))}) è stata lasciata fuori."
+               if M["escluse"] else "")
+    return f"""<h2 id="mappa">La mappa</h2>
+<ul>
+<li><strong>Come abbiamo trovato le posizioni.</strong> Per ogni indirizzo di <code>aziende.csv</code> abbiamo chiesto le coordinate a <strong>Nominatim</strong>, il servizio di ricerca di OpenStreetMap: una richiesta ogni 1,2 secondi, con un nome del programma e un contatto, e ogni risposta conservata sul computer (la stessa domanda non si fa due volte). Per i bolli CE si usa l’indirizzo dell’elenco europeo degli stabilimenti (TRACES); per i produttori solo nominati (Krug, Berlucchi, Frescobaldi…) la sede nota, a livello di comune. Una risposta che cade nel paese o nella provincia sbagliati si scarta.</li>
+<li><strong>Via o comune.</strong> Il programma prova prima via e numero civico, poi la sola via, poi il testo libero, infine il centro del comune. Per {n_via} fornitori il punto è a livello di <em>via</em>; per gli altri {len(forn) - n_via} è soltanto il <em>centro del comune</em> («posizione approssimata al comune», segno tratteggiato sulla mappa): non è lo stabilimento, ma il paese in cui sta. Un fornitore con più indirizzi vicini (per esempio Colla, o Galloni a Langhirano) è un solo punto, quello più preciso.</li>
+<li><strong>Correzioni a mano.</strong> Peck scrive «Borgomanaro (IM)», che non esiste: è Borgomaro, in provincia di Imperia, e il punto è stato corretto a mano. Altri refusi di Peck sono corretti dal programma (Legnano per Legnago, Borgo San Dalmazzzo, Robbio Lomellina…); il popup lo dice. {senza} indirizzi della ricerca non hanno una pagina sul sito e quindi non sono sulla mappa; altri codici di imbottigliatori che non abbiamo saputo collocare non hanno un punto.</li>
+<li><strong>Il colore e la grandezza.</strong> Il colore è la categoria più frequente fra i prodotti che il fornitore fa per Peck (le stesse categorie della Dispensa), la grandezza dice quanti sono. Le aziende senza prodotti nello shop del 2026 sono piccole e prendono la categoria dalla ricerca.</li>
+<li><strong>Le regioni del vino.</strong> Un solo punto per regione, il suo centro approssimato (non una cantina): {len(vini) - n_man} trovati con Nominatim e {n_man} scelti a mano, perché Nominatim sbagliava (Champagne, Loira, Alsazia, Napa…). Il raggio del cerchio cresce con le etichette della carta; una cantina con più regioni divide le sue etichette in parti uguali, per questo i numeri sono approssimati e non coincidono con il filtro dell’Enoteca.{esc_txt}</li>
+<li><strong>Cosa carica la pagina.</strong> Mappa e tessere vengono da <strong>OpenStreetMap</strong> (© OpenStreetMap contributors, licenza ODbL) e le librerie <strong>Leaflet {LEAFLET_V}</strong> e <strong>Leaflet.markercluster {CLUSTER_V}</strong> da cdnjs (con impronta di controllo): il tuo browser le scarica da lì, e quei server vedono la tua visita. Solo questa pagina lo fa; i dati (<code>docs/mappa.json</code>) sono nostri.</li>
+</ul>
+"""
+
+
+def sezione_premi_html(fonti, premi, V):
+    if not fonti and not premi:
+        return ""
+    def usata(f):
+        return f["stato"].strip().lower().startswith("usata")
+    usate = [f for f in fonti if usata(f)]
+    non = [f for f in fonti if not usata(f)]
+    n_vini = len(premi)
+    n_righe = sum(len(v) for v in premi.values())
+    n_esatti = sum(1 for w in V["vini"] if w.get("ze"))
+    li_usate = "".join(
+        f'<li><strong>{H(f["fonte"])}</strong>: {H(f["cosa_e"])}. Edizioni: {H(f["anni_coperti"] or "—")}. '
+        f'{H(f["voci_lette"])} voci lette, {H(f["righe_abbinate"])} abbinate ai nostri vini ({H(f["vini_con_premio"])} vini). '
+        f'<span class="meta">Termini: {H(f["termini_e_licenza"])}. {ext(f["url"], "sito")}</span></li>' for f in usate)
+    li_non = "".join(
+        f'<li><strong>{H(f["fonte"])}</strong> ({H(f["cosa_e"])}): {H(f["stato"])}. '
+        f'<span class="meta">{H(f["termini_e_licenza"])}</span></li>' for f in non)
+    return f"""<h2 id="premi">Premi e classifiche</h2>
+<p>Sulla pagina di un vino, nel riquadro «Premi e classifiche», mettiamo i premi di alcune guide e classifiche: il nome del premio, l’edizione, la posizione (per le Top 100) e l’annata premiata, con il link alla fonte. Sono {num(n_righe)} premi per {num(n_vini)} vini; per {num(n_esatti)} vini il premio è dell’<strong>annata che c’è nella carta di Peck</strong> e solo per questi compare un piccolo chip nelle schede («5 Grappoli», «Top 100 Suckling #12», «Triplo faccino DoctorWine») e funziona il filtro «Con premi». Se il premio è di un’annata diversa (al massimo due anni di distanza) è scritto in chiaro («premiata l’annata 2021, su Peck c’è la 2019») e non è un premio della bottiglia di Peck, come per i voti di Tannico. <strong>Copiamo solo i nomi dei premi e le posizioni, mai il testo delle recensioni.</strong> Gli abbinamenti ai vini sono per cantina, nome e annata e possono sbagliare.</p>
+<p>Fonti usate:</p>
+<ul>{li_usate}</ul>
+<p>Fonti che abbiamo provato o guardato e <strong>non</strong> abbiamo usato (non aggiriamo i blocchi e rispettiamo il <code>robots.txt</code>, compresi i divieti per i programmi di intelligenza artificiale):</p>
+<ul>{li_non}</ul>
+"""
+
+
+# ---------------------------------------------------------------------------
 # Scrittura delle pagine
 # ---------------------------------------------------------------------------
 
 CARTELLE_GENERATE = ["dispensa", "prodotto", "box", "produttori", "produttore", "enoteca", "cantina",
-                     "vino", "occasioni", "prezzi", "come-funziona"]
-FILE_GENERATI = ["index.html", "404.html", "vini.json", "prezzi.json", "dati.json", "sitemap.xml", "robots.txt"]
+                     "vino", "occasioni", "prezzi", "mappa", "come-funziona"]
+FILE_GENERATI = ["index.html", "404.html", "vini.json", "prezzi.json", "mappa.json", "dati.json", "sitemap.xml", "robots.txt"]
 
 
 def pulisci_docs():
@@ -3616,7 +3982,10 @@ def scrivi_sito():
     dispensa, box, produttori, st = costruisci_cibo()
     box_per_nome = {nz(b["nome"]): b["id"] for b in box}
     V, stv = costruisci_vini(box_per_nome)
+    premi, fonti_premi = carica_premi()
+    V["meta"]["n_premi"] = assegna_premi(V, premi)
     az, items, boxes = prepara_cibo(dispensa, box, produttori)
+    MAPPA = costruisci_mappa(produttori, items, st["_riga_a_azienda"], V)
     righe_conf = collega_confronti(dispensa, az)
     CV = carica_offerte_vini()
     alternative = carica_alternative(dispensa)
@@ -3688,11 +4057,21 @@ def scrivi_sito():
     scrivi_pagina("prezzi", layout(titolo="Prezzi confrontati", descr=descr, corpo=corpo, rel="prezzi", sezione="prezzi"), "prezzi")
     n_prezzi_json = scrivi_json("prezzi.json", json_prezzi(righe_prezzi, riep))
 
+    # --- Mappa
+    n_mappa_json = 0
+    if MAPPA:
+        corpo, descr = pagina_mappa(MAPPA, "../")
+        scrivi_pagina("mappa", layout(titolo="Mappa", descr=descr, corpo=corpo, rel="mappa", sezione="mappa",
+                                      referrer="strict-origin-when-cross-origin", testa_extra=testa_mappa(),
+                                      piede_extra=piede_mappa("../")), "mappa")
+        n_mappa_json = scrivi_json("mappa.json", json_mappa(MAPPA))
+    extra_cf = sezione_mappa_html(MAPPA) + sezione_premi_html(fonti_premi, premi, V)
+
     # --- Come funziona, 404
     scrivi_pagina("come-funziona", layout(
         titolo="Come funziona", sezione="come-funziona", rel="come-funziona",
         descr=f"Da dove vengono i dati di Peck Tracker, quanto siamo sicuri e quali sono i limiti. {AVVISO}",
-        corpo=pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico, az, riep, len(alternative), len(BV))), "come funziona")
+        corpo=pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico, az, riep, len(alternative), len(BV), extra_cf)), "come funziona")
     (DOCS / "404.html").write_text(pagina_404(), encoding="utf-8")
 
     # --- dati per i filtri dell'enoteca, sitemap, robots
@@ -3709,6 +4088,9 @@ def scrivi_sito():
     st["prezzi_json"] = n_prezzi_json
     st["box_valore"] = len(BV)
     st["alternative"] = len(alternative)
+    st["mappa"] = MAPPA
+    st["mappa_json"] = n_mappa_json
+    st["premi"] = (len(premi), V["meta"]["n_premi"])
     return dispensa, box, produttori, V, st, stv, n_json
 
 
@@ -3721,6 +4103,10 @@ def main():
     print(f"vini.json: {n_json/1024:.0f} KB   prezzi.json: {st['prezzi_json']/1024:.0f} KB")
     print("ritagli usati:", st["ritagli"], " senza box:", st["ritagli_senza_box"], " non usati:", st["ritagli_non_usati"])
     print("confronti:", {k: (round(v, 1) if isinstance(v, float) else v) for k, v in st["riep"].items()})
+    if st["mappa"]:
+        print(f"mappa.json: {st['mappa_json']/1024:.0f} KB  fornitori: {len(st['mappa']['fornitori'])}  regioni vino: {len(st['mappa']['vini'])}"
+              f"  geo senza pagina: {st['mappa']['scartate']}  regioni escluse: {st['mappa']['escluse']}")
+    print("vini con premi:", st["premi"][0], " con chip (stessa annata):", st["premi"][1])
     print("storico:", len(st["storico"]), " alternative:", st["alternative"], " box con valore:", st["box_valore"])
     print(f"elementi (dispensa): {st['elementi']}   box/pagine: {st['box']}   produttori: {st['produttori']}"
           f"   vini: {V['meta']['n_vini']}   cantine: {V['meta']['n_cantine']}")

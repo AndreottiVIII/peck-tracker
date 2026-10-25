@@ -1,9 +1,11 @@
 """Premi e classifiche pubbliche: abbina i vini della carta Peck agli elenchi aperti delle guide.
 
-    python -I src/premi.py scarica [fonte]     # scarica le pagine grezze in data/raw/premi/<fonte>/ (salta quelle gia' presenti)
-    python -I src/premi.py leggi               # legge le pagine scaricate -> data/raw/premi/premi_grezzi.csv
-    python -I src/premi.py abbina              # scrive data/premi_vini.csv e data/premi_fonti.csv
+    python -I src/premi.py scarica [gambero|bibenda|doctorwine|decanter]  # pagine grezze in data/raw/premi/<fonte>/ (salta quelle gia' presenti)
+    python -I src/premi.py abbina              # legge le pagine scaricate e scrive data/premi_vini.csv e data/premi_fonti.csv
     python -I src/premi.py verifica [N]        # N abbinamenti a caso da controllare a mano
+
+James Suckling Top 100: l'elenco e' disegnato dal JavaScript, quindi le posizioni sono state raccolte con un browser vero
+(solo posizione + cantina/vino/annata, nessun punteggio) in data/raw/premi/suckling/<ambito>_<anno>.txt.
 
 Regole di scarico (le stesse del resto del progetto):
   - prima di ogni sito si legge il robots.txt; si rispettano anche le sezioni dedicate agli agenti AI
@@ -432,6 +434,9 @@ DW_REGIONI = {"Piemonte", "Toscana", "Sicilia", "Veneto", "Lombardia", "Trentino
               "Calabria", "Basilicata", "Molise", "Valle d'Aosta", "Val d'Aosta", "Trentino-Alto Adige"}
 
 
+DW_NOTE = {"Faccino": "livello 95-97/100", "Doppio faccino": "livello 98/100", "Triplo faccino": "livello 99-100/100"}
+
+
 def dw_candidati():
     out = []
     for y in (2027, 2026, 2025, 2024):
@@ -473,19 +478,19 @@ def dw_leggi():
             if m:
                 punti = int(m.group(1))
                 continue
-            m = re.match(r"^(9[5-9]|100)\s+[–-]\s+(.+)$", r)       # edizione 2027: «97 – Vino 2023» e la cantina a capo
+            m = re.match(r"^(9[5-9]|100)\s+[–-]\s+(.+)$", r)    # edizione 2027: «97 – Vino 2023» e la cantina a capo
             if m and k + 1 < len(righe):
                 mm = re.match(r"^(.+?)\s+((?:19|20)\d\d)$", m.group(2))
                 cant = righe[k + 1]
-                if mm and not re.match(r"^(9[5-9]|100)", cant) and len(cant) < 90 and not cant.endswith(":"):
+                if mm and not re.match(r"^(9[5-9]|100)\b", cant) and len(cant) < 90 and not cant.endswith(":"):
                     pt = int(m.group(1))
                     premio = "Triplo faccino" if pt >= 99 else "Doppio faccino" if pt == 98 else "Faccino"
                     out.append({"fonte": "DoctorWine", "premio": premio,
                                 "guida": "DoctorWine Guida Essenziale ai Vini d'Italia", "edizione": ed.group(1),
                                 "vino": mm.group(1), "cantina": cant, "annata": mm.group(2), "posizione": "",
-                                "url": url, "paese": "IT", "nota": ""})
-                continue
-            m = re.match(r"^(9[5-9]|100)\s+(.+)$", r)
+                                "url": url, "paese": "IT", "nota": DW_NOTE[premio]})
+                    continue
+            m = re.match(r"^(9[5-9]|100)\s+(?:[–-]\s+)?(.+)$", r)
             if m:
                 voce, pt = m.group(2), int(m.group(1))
             elif punti and re.search(r"\b(19|20)\d\d\b.*[A-Za-z]", r) and len(r) < 160:
@@ -499,7 +504,7 @@ def dw_leggi():
             premio = "Triplo faccino" if pt >= 99 else "Doppio faccino" if pt == 98 else "Faccino"
             out.append({"fonte": "DoctorWine", "premio": premio, "guida": "DoctorWine Guida Essenziale ai Vini d'Italia",
                         "edizione": ed.group(1), "vino": vino, "cantina": cantina, "annata": anno, "posizione": "",
-                        "url": url, "paese": "IT", "nota": ""})
+                        "url": url, "paese": "IT", "nota": DW_NOTE[premio]})
     return out
 
 
@@ -758,7 +763,19 @@ FONTI = [   # (fonte, cosa e', url, termini, stato)
     ("La Revue du vin de France", "Meilleurs vins / Top", "https://www.larvf.com", "sito non raggiungibile dal nostro user agent; robots.txt vieta /vins/: NON scaricato", None),
     ("Vitae (AIS)", "Quattro Viti, Gemme, Tastevin", "https://aisitalia.it", "robots.txt aperto ma l'elenco dei vini sta solo nella guida/app (codice AIS-Key): nessun elenco pubblico trovato", None),
     ("Veronelli", "Super Tre Stelle / Tre Stelle Oro", "https://www.ilveronelli.it", "nessun elenco aperto trovato sul sito (solo comunicati dei produttori)", None),
+    ("Bettane+Desseauve (La Selection)", "Selezione 2026 per regione (Bon vin / Tres bon vin / Vin de reference)", "https://selectionbd.bettanedesseauve.com",
+     "robots.txt assente (404); elenchi in PDF per regione di vini proposti dai produttori: non usati", None),
 ]
+
+
+STATI_NON_USATE = {"Wine Spectator": "NON scaricata: il robots.txt vieta ClaudeBot e Anthropic-Client",
+                   "Wine Enthusiast": "NON scaricata: protezione anti-bot (captcha), non aggirata",
+                   "Slow Wine (Slow Food)": "NON scaricata: 403 anti-bot gia' sul robots.txt",
+                   "Falstaff": "NON scaricata: 403 con sfida anti-bot, non aggirata",
+                   "La Revue du vin de France": "NON scaricata: sito chiuso al nostro user agent",
+                   "Vitae (AIS)": "nessun elenco pubblico dei vini (solo guida e app)",
+                   "Veronelli": "nessun elenco pubblico trovato",
+                   "Bettane+Desseauve (La Selection)": "non provata: elenchi a livelli (Bon vin / Tres bon vin / Vin de reference) in PDF per regione, pochi vini da collezione"}
 
 
 def scrivi_fonti(premi, righe):
@@ -785,6 +802,34 @@ def scrivi_fonti(premi, righe):
             elif chiave == "gambero":
                 stato = "BLOCCATA (sfida anti-bot Cloudflare sulle pagine; nessun dato)"
             else:
-                stato = "non usata"
+                stato = STATI_NON_USATE.get(nome, "non usata")
             w.writerow([nome, cosa, url, termini, stato, " ".join(anni), len(voci), len(righe_f),
-                    
+                        len({r["id"] for r in righe_f})])
+
+
+def verifica(n=30):
+    f = RAW / "_premi_controllo.tsv"
+    righe = [r.split("\t") for r in f.read_text(encoding="utf-8").splitlines()]
+    random.seed(5)
+    for r in random.sample(righe, min(n, len(righe))):
+        print(f"[{r[1][:6]}|{r[3]}] {r[2]}\n    PECK : {r[4]}\n    PREMIO: {r[5]}")
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "scarica":
+        fonte = sys.argv[2] if len(sys.argv) > 2 else "tutte"
+        if fonte in ("tutte", "gambero"):
+            gr_scarica()
+        if fonte in ("tutte", "decanter"):
+            dc_scarica()
+        if fonte in ("tutte", "bibenda"):
+            bb_scarica()
+        if fonte in ("tutte", "doctorwine"):
+            dw_scarica()
+    elif cmd == "abbina":
+        abbina()
+    elif cmd == "verifica":
+        verifica(int(sys.argv[2]) if len(sys.argv) > 2 else 30)
+    else:
+        print(__doc__)

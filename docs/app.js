@@ -275,6 +275,9 @@
       return ` <span class="voto-badge vk-${esc(w.vk)}" title="${esc(tit)}">${esc(w.vb + (w.vy ? ' · ' + w.vy : ''))}</span>`;
     };
 
+    // chip del premio (stessa logica di badge_premio() in sito.py): solo per i premi della stessa annata
+    const premioChip = w => w.zb ? ` <span class="premio-chip" title="${esc(w.zt)}">${esc(w.zb)}</span>` : '';
+
     function cardVino(w) {
       const pagina = radice + 'vino/' + w.d + '/';
       const fotoUrl = w.ph ? (w.ph.startsWith('http') ? w.ph : V.meta.prefisso_foto + w.ph) : '';
@@ -291,7 +294,7 @@
       const ext = (url, t) => `<a class="bottone secondario piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${t}<span class="sr"> (si apre in una nuova scheda)</span></a>`;
       const tt = w.tt || (w.n);
       return `<li class="it"><article class="scheda vino">${foto}<div class="corpo">` +
-        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}${votoBadge(w)}</p>` +
+        `<div class="col-a"><p class="tipo-riga">${chip}${w.a ? ` <span class="meta">· ${esc(w.a)}</span>` : ''}${votoBadge(w)}${premioChip(w)}</p>` +
         `<h2 class="nome"><a class="vai" href="${pagina}">${esc(w.n)}</a></h2></div>` +
         `<p class="meta"><span class="col-b"><a href="${radice}cantina/${esc(w.cantina.id)}/">${esc(w.cantina.nome)}</a></span>` +
         `<span class="col-c">${esc([w.r, w.paese].filter(Boolean).join(' · '))}</span></p>` +
@@ -317,7 +320,7 @@
       const rif = w => (S.fmt ? rigaPerFormato(w, S.fmt) : rigaPrincipale(w));
       let arr = V.vini.filter(w => {
         if (!((ti < 0 || w.t === ti) && (pi < 0 || w.p === pi) && (!S.reg || w.r === S.reg) &&
-          (!can || w.kc.includes(can)) && (!S.tan || (w.tn && !w.tf)) && (!S.voto || w.vk) && (!S.crit || w.vk === 'c') &&
+          (!can || w.kc.includes(can)) && (!S.tan || (w.tn && !w.tf)) && (!S.voto || w.vk) && (!S.crit || w.vk === 'c') && (!S.premi || w.ze) &&
           q.every(t => w.k.includes(t)))) return false;
         if (S.fmt) {
           if (S.fmt === 'set' ? !w.f.some(f => f[6] === 'Set') : !w.f.some(f => catFormato(f) === S.fmt)) return false;
