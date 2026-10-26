@@ -183,7 +183,15 @@ def p_winerim():
           raw=(carta, ["vini_p*.json", "filtri.json"]))
 
 
+# Le condizioni d'uso di Tannico (iubenda, art. "Scraping") vietano la raccolta automatica di dati senza
+# autorizzazione scritta: finche' non arriva, l'aggiornamento non scarica nulla da tannico.it (26/10/2026).
+TANNICO_ATTIVO = False
+
+
 def p_tannico():
+    if not TANNICO_ATTIVO:
+        registra("tannico: catalogo", "spento: le condizioni d'uso di Tannico vietano lo scraping senza autorizzazione")
+        return
     ok = passo("tannico: catalogo", ["src/tannico.py", "scarica"], 12,
                raw=(RAW / "tannico", ["products_p*.json", "sitemap*.xml"]))
     if not catalogo_tannico_ok():
@@ -196,6 +204,9 @@ def p_tannico():
 
 
 def p_voti_tannico():
+    if not TANNICO_ATTIVO:
+        registra("voti Tannico", "spento: le condizioni d'uso di Tannico vietano lo scraping senza autorizzazione")
+        return
     if not catalogo_tannico_ok() or righe(DATA / "tannico.csv") == 0:
         registra("voti Tannico", "saltato: mancano catalogo o abbinamenti")
         return
