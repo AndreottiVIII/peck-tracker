@@ -1,4 +1,6 @@
-"""Scarica le pagine elenco e le pagine prodotto dello shop Peck in data/raw/.
+"""Scarica le pagine elenco e le pagine prodotto dello shop Peck VECCHIO (shop.peck.it) in data/raw/.
+
+ATTENZIONE: shop.peck.it e' stato spento il 12/11/2026 (reindirizza a peck.it). Per lo shop nuovo si usa src/fetch_shop2.py.
 
 Uso:  python -I src/fetch.py [--pausa SECONDI] [--forza]
 

@@ -603,3 +603,16 @@ ul.prezzi { margin-top: .5rem; }
   .fuori .occ { grid-template-columns: 72px minmax(0, 2fr) minmax(0, 2.6fr) minmax(0, 1.4fr); }
   .fuori .occ > .occ-extra { grid-column: 2 / -1; }
 }
+
+/* prodotti e box non piu' in vendita online (mai tolti dal sito: restano con la data dell'ultima volta) */
+.non-vendita {
+  display: inline-block; margin: .25rem 0 .1rem; padding: .12rem .5rem; border-radius: 999px;
+  background: #f1ece0; color: #5a4d37; border: 1px dashed #b3a584;
+  font-size: .72rem; font-weight: 700; line-height: 1.35;
+}
+.avviso-fuori {
+  margin: .75rem 0; padding: .7rem .9rem; border-left: 4px solid #b3a584; background: #f6f1e4;
+  font-size: .92rem;
+}
+.nota-vecchia { border-left: 3px solid #d8c9a0; padding-left: .6rem; }
+.elenco-semplice { margin: .4rem 0 0; padding-left: 1.2rem; }

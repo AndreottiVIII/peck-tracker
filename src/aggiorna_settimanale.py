@@ -4,6 +4,10 @@
 
 Rilegge le fonti pubbliche che si possono riscaricare e poi riscrive il sito. Un passo alla volta, nell'ordine:
 
+  shop               lo shop NUOVO di Peck (peck.it/shop): API pubblica + pagina di ogni prodotto (src/fetch_shop2.py), poi
+                     prodotti.csv / elementi.csv / storico_shop.csv aggiornati SENZA cancellare niente (src/extract_shop2.py) e
+                     data/nuovi_da_cercare.csv (src/nuovi_da_cercare.py). I prodotti che spariscono dallo shop restano, segnati
+                     «non piu' in vendita online» con la data dell'ultima volta. shop.peck.it (spento il 12/11/2026) non si tocca piu'.
   winerim            carta dei vini (src/vini.py --dettagli): elenco sempre nuovo, scheda di dettaglio solo per i vini nuovi
   tannico            catalogo Tannico (src/tannico.py scarica) e abbinamenti (abbina)
   voti_tannico       schede Tannico dei vini abbinati: si scaricano solo quelle che non ci sono ancora (3 s di pausa)
@@ -13,7 +17,6 @@ Rilegge le fonti pubbliche che si possono riscaricare e poi riscrive il sito. Un
   voti_aperti        voti Wine Enthusiast / X-Wines (src/voti_aperti.py abbina): solo se i dataset sono su disco
   voti_enoteche      voti dai negozi (src/voti_enoteche.py): SPENTO, si accende con la variabile VOTI_ENOTECHE=si
   confronto_enoteche prezzi Peck / negozi (src/confronto_vini_enoteche.py): solo se le schede dei negozi sono su disco
-  foto_shop          pagine dello shop Peck per le foto (src/fetch.py): solo se mancano (computer pulito)
   sito               src/sito.py: riscrive docs/ (se questo passo fallisce il programma esce con errore)
 
 Regole:
@@ -289,12 +292,18 @@ def p_voti_enoteche():
     passo("voti enoteche: estrazione", ["src/voti_enoteche.py", "estrai"], 8, protetti=[csv_], soglia=0.9)
 
 
-def p_foto_shop():
-    if list(RAW.glob("prodotto_*.html")):
-        registra("foto dello shop", "non serve: pagine gia' su disco")
+def p_shop():
+    """Shop nuovo di Peck. Se lo scarico fallisce (API ferma, sito in manutenzione) non cambia niente: le tabelle restano
+    quelle di prima e il sito si riscrive lo stesso. Le tabelle non perdono mai righe (src/extract_shop2.py lo controlla);
+    se qualcosa va storto i file vecchi tornano al loro posto."""
+    scarico = passo("shop: scarico", ["src/fetch_shop2.py"], 12)
+    if not scarico:
+        registra("shop: tabelle", "saltato: lo scarico non e' riuscito (le tabelle restano quelle di prima)")
         return
-    # senza queste pagine il sito perde le foto dei prodotti e delle box (le legge src/sito.py)
-    passo("foto dello shop", ["src/fetch.py"], 25)
+    tabelle = [DATA / "prodotti.csv", DATA / "elementi.csv", DATA / "indirizzi.csv", DATA / "altre_origini.csv",
+               DATA / "storico_shop.csv"]
+    passo("shop: tabelle", ["src/extract_shop2.py"], 4, protetti=tabelle, soglia=0.95)
+    passo("shop: da cercare", ["src/nuovi_da_cercare.py"], 3, protetti=[DATA / "nuovi_da_cercare.csv"], soglia=0.0)
 
 
 def p_sito():
@@ -329,10 +338,11 @@ def main():
     global BUDGET_S
     sys.stdout.reconfigure(encoding="utf-8")
     passi = {
+        "shop": p_shop,     # per primo: box_valore e il sito leggono le tabelle appena aggiornate
         "winerim": p_winerim, "tannico": p_tannico, "voti_tannico": p_voti_tannico,
         "confronto_vini": p_confronto_vini, "prezzi_produttori": p_prezzi_produttori,
         "box_valore": p_box_valore, "voti_aperti": None, "voti_enoteche": p_voti_enoteche,
-        "confronto_enoteche": p_confronto_enoteche, "foto_shop": p_foto_shop,
+        "confronto_enoteche": p_confronto_enoteche,
     }
     ap = argparse.ArgumentParser()
     ap.add_argument("--budget-minuti", type=float, default=50)

@@ -17,7 +17,11 @@ Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in 
 Tutti i file sono in `data/` e si aprono bene anche con Excel (UTF-8 con BOM).
 
 - `prodotti.csv`, `elementi.csv`, `indirizzi.csv`, `altre_origini.csv`: dove Peck dice che sono
-  prodotti i 46 articoli dello shop (passo 1).
+  prodotti gli articoli dello shop (passo 1): i 46 di shop.peck.it (24 ottobre 2026) e i 73 di peck.it/shop
+  (12 novembre 2026), con le date di prima e ultima volta e `in_vendita` (vedi «Il nuovo shop»).
+- `storico_shop.csv`: una riga per prodotto per data di fotografia dello shop (prezzo, categoria, foto).
+- `nuovi_da_cercare.csv`: indirizzi, bolli CE e produttori nominati che compaiono nello shop ma non hanno ancora una
+  riga in `aziende.csv` (da cercare: passo 2).
 - `aziende.csv`: le aziende dietro quegli indirizzi, bolli CE e produttori nominati, 100 righe con
   la fonte e quanto siamo sicuri (passo 2).
 - `vini.csv`: i 3.071 vini della carta dell'enoteca, una riga per formato (3.082 righe), con il formato in litri.
@@ -115,6 +119,57 @@ Peck S.p.A. ..."). In `indirizzi.csv` quella riga e' messa in fondo.
 - Quando una scheda ha due luoghi diversi per lo stesso prodotto (la pasta, per esempio, dice sia
   Gragnano sia Roseto degli Abruzzi), tutti e due sono in tabella: non abbiamo scelto noi quale
   sia "il vero".
+
+## Il nuovo shop (peck.it/shop) e i prodotti che spariscono
+
+Il **12 novembre 2026** Peck ha spento lo shop vecchio (`shop.peck.it`, Drupal: ora reindirizza a peck.it) ed e' passata
+a `https://peck.it/shop` (WooCommerce). Le foto di `shop.peck.it` non caricano piu'. Lo shop nuovo ha una API pubblica
+(Store API: `https://peck.it/wp-json/wc/store/v1/products?per_page=100`), che il `robots.txt` non vieta; le condizioni di
+vendita di Peck (art. 34) vietano di riprodurre immagini e testi del sito, quindi si continuano a tenere solo le frasi
+brevi sull'origine, come prima.
+
+**Regola del proprietario: non si toglie MAI niente.** Un prodotto che sparisce dallo shop resta nelle tabelle e sul
+sito, segnato «Non piu' in vendita online — visto l'ultima volta il ...». Se la frase di origine di un prodotto cambia o
+sparisce, la riga vecchia resta (segnata) e se ne aggiunge una nuova.
+
+Programmi:
+
+- `src/fetch_shop2.py`: scarica l'API (le pagine da 100 prodotti) e la pagina HTML di ogni prodotto in
+  `data/raw/shop2/<data>/` (esclusa da git), 2 s di pausa, robots.txt riletto. Le frasi di origine non sono nell'API: stanno
+  solo nella pagina, nel riquadro «Scheda prodotto». Come lo shop scrive le box: l'API ha in `description` l'elenco dei
+  contenuti ("Burro con tartufo 30g<br>..."), la pagina ha la scheda con un blocco di testo unico
+  `NOME DELL'ELEMENTO 30 gIngredienti:<corpo>NOME DEL SECONDO...` (i paragrafi del vecchio shop uniti senza separatori).
+- `src/scheda_shop2.py`: divide quel blocco in elementi (riconosce i nomi dai nomi gia' noti del vecchio shop e dalle
+  maiuscole), abbina le voci senza nome (nel nuovo shop i vini non hanno il nome nella scheda, solo «PRODOTTO IN FRANCIA DA
+  KRUG») alle righe della Descrizione, e per i box di vini (categoria `gift-box-wines`) ogni riga della Descrizione e' un
+  elemento. Le frasi si estraggono poi con le stesse funzioni di `src/extract.py`.
+- `src/extract_shop2.py`: aggiorna `prodotti.csv`, `elementi.csv`, `indirizzi.csv`, `altre_origini.csv` e
+  `storico_shop.csv` **senza cancellare righe** (controlla che il numero di righe non scenda). I prodotti si abbinano al
+  vecchio shop per nome (senza maiuscole, accenti, spazi; se non basta, per elemento unico e prezzo): 46 su 46 si sono
+  ritrovati nel nuovo shop (il «PANETTONE TRADIZIONALE 1 KG» e' ora «Panettone Tradizionale»). Se l'API restituisce meno di 20
+  prodotti non cambia niente. Rilanciarlo con la stessa fotografia non cambia nulla.
+- `src/nuovi_da_cercare.py`: scrive `nuovi_da_cercare.csv` (voci senza riga in `aziende.csv`, con lo stesso abbinamento di `sito.py`).
+- `src/foto_shop.py` (solo a mano, non nell'aggiornamento settimanale): copia in locale le foto in
+  `archivio/foto_shop/<data>/` con il nome originale e un `indice.csv` (`archivio/` e' escluso da git: le foto non finiscono
+  mai su GitHub; il sito pubblico continua a collegare le foto dai server di Peck). Prova anche gli indirizzi delle foto del
+  vecchio shop (non caricano piu'). In `prodotti.csv` la colonna `foto_locale` dice il file archiviato.
+- `src/fetch.py` e `src/extract.py` sono i programmi del VECCHIO shop (non si lanciano piu': `extract.py` si rifiuta se
+  `prodotti.csv` ha gia' `in_vendita`, perche' riscriverebbe le tabelle cancellando lo storico; `--forza-vecchio` lo
+  permette). Le sue funzioni (`righe_origine`, `analizza`, `costruisci_indirizzi`...) sono usate dai programmi nuovi.
+
+Colonne nuove di `prodotti.csv`: `id_prodotto` (l'indirizzo stabile delle pagine del sito: per i prodotti del vecchio shop e'
+lo slug di prima, cosi' i link non cambiano), `fonte_shop` (`shop.peck.it` o `peck.it`), `prima_vista`, `ultima_vista`,
+`in_vendita` (`si`/`no`), `url` (quello di oggi, se c'e') e `url_vecchio`, `id_woo`, `categoria_slug` (`gift-box`,
+`gift-box-wines`, `dolci`, `grandi-lievitati`), `foto_url` (l'ultima foto nota), `foto_vecchia_url`, `foto_locale`. In
+`elementi.csv` si aggiungono `prima_vista`, `ultima_vista`, `in_vendita`. `url_pagina` e' l'`url` di oggi (per i prodotti
+spariti, l'ultimo noto). `prima_vista` dei prodotti del vecchio shop e' il 2026-10-24 (il giorno in cui sono state scaricate).
+
+Sul sito: etichetta «Non piu' in vendita online — visto l'ultima volta il ...» su schede e pagine di prodotti e box, filtro
+«Disponibilita'» (Tutti / In vendita ora / Non piu' in vendita online; il filtro predefinito mostra tutto) in Dispensa e
+Box regalo, filtro «Categoria dello shop» nelle Box, elenco «Non piu' in questa box» nelle pagine delle box cambiate, e
+le indicazioni di origine non piu' presenti nella scheda di oggi restano sulla pagina del prodotto, segnate.
+I «ritagli» dalle foto delle box (scritti sulle foto del vecchio shop) puntano ora alle foto del nuovo shop, che sono le
+stesse fotografie (controllato su 44 box con un confronto delle miniature).
 
 ## Passo 2: chi c'e' dietro gli indirizzi
 
@@ -540,6 +595,7 @@ possono riscaricare, riscrive il sito con `python -I src/sito.py` e, **solo se q
 
 | Passo | Cosa rilegge | Come |
 | --- | --- | --- |
+| `shop` | lo shop nuovo di Peck: `prodotti.csv`, `elementi.csv`, `indirizzi.csv`, `altre_origini.csv`, `storico_shop.csv`, `nuovi_da_cercare.csv` | `src/fetch_shop2.py` (API + 73 pagine, 2 s di pausa, circa 3 minuti) poi `src/extract_shop2.py` e `src/nuovi_da_cercare.py`: **non cancellano mai righe**; se lo scarico fallisce le tabelle restano quelle di prima. Va per primo, cosi' `box_valore` e il sito leggono le tabelle appena aggiornate. Non tocca piu' `shop.peck.it` |
 | `winerim` | la carta dei vini: `vini.csv`, `cantine.csv`, `formati.csv` | `src/vini.py --dettagli`: l'elenco (31 pagine, 2 s di pausa) si riscarica sempre; la scheda di dettaglio solo per i vini **nuovi** (per gli altri si riusano i dati gia' in `vini.csv`) |
 | `tannico` | il catalogo Tannico e gli abbinamenti: `tannico.csv` | `src/tannico.py scarica` (catalogo e sitemap sempre nuovi) e `abbina` |
 | `voti_tannico` | i voti dalle schede Tannico: `tannico_voti.csv` | `src/tannico.py voti`: si scaricano solo le schede degli indirizzi abbinati che non ci sono ancora (3 s di pausa); `data_raccolta` e' il giorno in cui la scheda e' stata scaricata |
@@ -549,14 +605,13 @@ possono riscaricare, riscrive il sito con `python -I src/sito.py` e, **solo se q
 | `voti_aperti` | `voti_aperti.csv` (Wine Enthusiast, X-Wines) | `src/voti_aperti.py abbina`, **solo se** i dataset sono su disco (nella cache); altrimenti il file resta com'e'. I dataset non cambiano: per averli sul runner una volta, «Run workflow» con *scarica_voti_aperti* |
 | `voti_enoteche` | `voti_enoteche.csv` (voti dai negozi) | **spento** finche' non si imposta la variabile del repository `VOTI_ENOTECHE=si` (o si spunta *voti_enoteche* in «Run workflow»); solo schede nuove, mai Berry Bros & Rudd (ha una finestra oraria) |
 | `confronto_enoteche` | prezzi Peck / negozi online: `confronto/vini_enoteche_prezzi.csv` | `src/confronto_vini_enoteche.py`, legge solo le schede dei negozi gia' salvate: se non sono su disco il file resta com'e' |
-| `foto_shop` | le pagine dello shop Peck da cui `sito.py` prende le foto | `src/fetch.py` (10 s di pausa, circa 10 minuti) **solo se mancano** in `data/raw/`, cioe' su un computer pulito o con la cache persa |
 | `sito` | tutto `docs/` | `src/sito.py`; se questo passo fallisce il job si ferma e non pubblica niente |
 
 **Cosa NON si aggiorna da solo:** `confronto/alternative_7.csv` (usa il catalogo del delivery in `data/locale/` e il catalogo Brezzo salvato),
 `risultati_7.py` e gli altri programmi che scrivono a mano i file `risultati_*.csv` (rilanciarli cancellerebbe i prezzi
 riletti), i prezzi del delivery di Peck (serve il login: si salvano a mano e si rilancia
-`src/delivery_dispensa.py`), le pagine dello shop Peck e i passi 1 e 2 (`extract.py`, `aziende.csv`), il controllo dei
-link, i bolli CE, e gli abbinamenti fatti a mano. Il sito resta una fotografia: i prezzi di Peck del delivery, per esempio,
+`src/delivery_dispensa.py`), il passo 2 (`aziende.csv`: le righe di `nuovi_da_cercare.csv` si cercano a mano), le foto dello
+shop in `archivio/` (`src/foto_shop.py`), il controllo dei link, i bolli CE, e gli abbinamenti fatti a mano. Il sito resta una fotografia: i prezzi di Peck del delivery, per esempio,
 sono sempre quelli del 25 ottobre 2026.
 
 **Regole di sicurezza.** Un sito che non risponde non ferma gli altri: il passo e' segnato «errore» nel riepilogo
@@ -567,10 +622,11 @@ Il tempo e' diviso fra i passi (50 minuti in tutto): un passo a cui non resta te
 8 minuti; la volta dopo si riparte da dove si era arrivati.
 
 **La cache.** `data/raw/` non e' in git (sono scaricamenti): il workflow ne salva una parte (`winerim`, `tannico`,
-`voti`, le pagine dello shop) con `actions/cache` alla fine di ogni esecuzione e la rimette all'inizio della
+`voti`) con `actions/cache` alla fine di ogni esecuzione e la rimette all'inizio della
 successiva. Cosi' si scaricano solo le novita'. Se la cache va persa (GitHub la cancella dopo 7 giorni senza uso) la
 volta dopo il lavoro e' piu' lungo ma il risultato e' lo stesso: le schede dei vini non si riscaricano (i dati sono gia' in
-`vini.csv`), mentre le circa 190 schede Tannico (10 minuti) e le pagine dello shop Peck (10 minuti) si.
+`vini.csv`), mentre le circa 190 schede Tannico (10 minuti) si. Lo shop di Peck si riscarica sempre intero (73 pagine, circa 3 minuti):
+non serve la cache.
 
 ### I prezzi dei produttori (`src/aggiorna_prezzi_produttori.py`)
 
@@ -600,8 +656,11 @@ prezzo cambiato finisce in `data/confronto/storico_prezzi.csv` (`data`, `url`, `
 Servono Python 3.12, `requests` e `beautifulsoup4`. Dalla cartella `peck-tracker`, nell'ordine:
 
 ```
-python -I src/fetch.py          # passo 1: scarica le pagine in data/raw/ (circa 10 minuti la prima volta)
-python -I src/extract.py        # passo 1: scrive i quattro file CSV del passo 1 in data/
+python -I src/fetch_shop2.py    # passo 1 (shop nuovo): scarica API e pagine in data/raw/shop2/<data>/ (circa 3 minuti)
+python -I src/extract_shop2.py  # passo 1: aggiorna prodotti, elementi, indirizzi, altre_origini, storico_shop SENZA cancellare righe
+python -I src/nuovi_da_cercare.py  # passo 1: scrive nuovi_da_cercare.csv (voci mai cercate in aziende.csv)
+python -I src/foto_shop.py      # (a mano, facoltativo) copia le foto in archivio/foto_shop/<data>/ (fuori da git)
+# fetch.py ed extract.py sono del vecchio shop (shop.peck.it, spento il 12/11/2026): non si lanciano piu'
 python -I src/bolli.py scarica  # passo 2: scarica gli elenchi UE degli stabilimenti (Italia e Spagna)
 python -I src/bolli.py cerca    # passo 2: abbina i bolli CE
 python -I src/vini.py --dettagli  # vini: scarica la carta e le schede dei vini (circa un'ora), scrive vini.csv e cantine.csv
@@ -623,9 +682,11 @@ resta com'e' e `src/sito.py` funziona lo stesso.
 `aziende.csv` non si rigenera con un programma: e' la ricerca a mano descritta sopra (dopo il controllo
 dei link si correggono a mano i link rotti). `docs/personale.js` (il logo, solo in locale) non si rigenera e non si pubblica.
 
-`fetch.py` aspetta 10 secondi fra una richiesta e l'altra (e' il `Crawl-delay` che lo shop
-dichiara in robots.txt; si cambia con `--pausa 1`), salta i file gia' scaricati (con `--forza` li
-riscarica) e legge solo le pagine in italiano. Parte dall'elenco `/it/negozio-online` (pagine 0-3)
+`fetch_shop2.py` aspetta 2 secondi fra una richiesta e l'altra, rilegge il `robots.txt` di peck.it a ogni giro e salta le
+pagine gia' scaricate nella cartella del giorno (con `--forza` le riscarica).
+
+(Il vecchio `fetch.py` aspettava 10 secondi fra una richiesta e l'altra, il `Crawl-delay` di shop.peck.it, e leggeva solo le
+pagine in italiano.) Parte dall'elenco `/it/negozio-online` (pagine 0-3)
 e, per controllo, dall'elenco `/it/negozio-online/gift-box`: contengono gli stessi 46 prodotti. Lo
 shop ha una sola categoria ("Gift box"); le pagine singole (panettoni, pandoro, veneziana, salmone,
 frutta disidratata) sono nello stesso elenco.

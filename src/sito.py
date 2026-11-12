@@ -58,13 +58,16 @@ DOCS = RADICE / "docs"
 REPO = "https://github.com/AndreottiVIII/peck-tracker"
 URL_SITO = "https://andreottiviii.github.io/peck-tracker/"
 PREFISSO_SITO = "/peck-tracker/"   # solo per la pagina 404, che GitHub serve da qualsiasi percorso
-FOTO_PECK_HOST = "https://shop.peck.it/"
+FOTO_PECK_HOST = "https://shop.peck.it/"             # lo shop vecchio (spento il 12/11/2026): le sue foto non caricano piu'
+FOTO_PECK_HOSTS = ("https://peck.it/",)               # le foto del nuovo shop (peck.it/shop); quelle di shop.peck.it non caricano piu'
 FOTO_WINERIM_PREFISSO = "https://app.winerim.com/images/wines/"
 LINK_WINERIM_PREFISSO = "https://web.winerim.com/enotecapeck/wines/"
 DATA_FOTOGRAFIA = "2026-10-24"
 DATA_DELIVERY = "2026-10-25"          # il giorno in cui abbiamo guardato il catalogo del servizio delivery
 FONTE_DELIVERY = "dal servizio delivery di Peck, 25 ottobre 2026"
-DATA_FOTOGRAFIA_LUNGA = "24 ottobre 2026"   # = DATA_FOTOGRAFIA, per la linea del tempo del fornitore
+DATA_FOTOGRAFIA_LUNGA = "24 ottobre 2026"   # = DATA_FOTOGRAFIA (la carta dei vini), per la linea del tempo del fornitore
+DATA_SHOP = DATA_FOTOGRAFIA                  # l'ultima fotografia dello shop di Peck: si legge da data/prodotti.csv (ultima_vista)
+DATA_SHOP_LUNGA = DATA_FOTOGRAFIA_LUNGA
 AVVISO = "Progetto indipendente di appassionati, non affiliato a Peck. Nessun prodotto in vendita."
 
 # ---------------------------------------------------------------------------
@@ -489,32 +492,62 @@ def costruisci_cibo():
     elementi = leggi_csv("elementi")
     aziende = Aziende(leggi_csv("aziende"))
 
-    # --- box (le 46 pagine dello shop)
+    # --- ultima fotografia dello shop (data/prodotti.csv: ultima_vista dei prodotti in vendita)
+    global DATA_SHOP, DATA_SHOP_LUNGA
+    viste = [p["ultima_vista"] for p in prodotti if p.get("ultima_vista") and p.get("in_vendita", "si") != "no"]
+    if viste:
+        DATA_SHOP = max(viste)
+        DATA_SHOP_LUNGA = data_lunga(DATA_SHOP)
+
+    # --- box: le pagine dello shop (le 46 del vecchio shop e quelle del nuovo). Un prodotto che non e' piu' nello
+    #     shop NON si toglie mai: resta, segnato «non piu' in vendita online» con la data dell'ultima volta.
     box = {}
     for p in prodotti:
-        sl = p["url"].rstrip("/").rsplit("/", 1)[-1]
+        sl = (p.get("id_prodotto") or p["url"].rstrip("/").rsplit("/", 1)[-1]).strip()
+        if "foto_url" in p:
+            foto = (p.get("foto_url") or "").strip()
+            foto = foto if foto.startswith(FOTO_PECK_HOSTS) else ""
+        else:
+            foto = foto_pagina(sl)
+        foto_vecchia = (p.get("foto_vecchia_url") or "").strip() or foto
+        in_vendita = p.get("in_vendita", "si") != "no"
         box[p["url"]] = {
             "id": sl, "nome": bello(p["nome"]), "nome_originale": p["nome"], "url": p["url"],
+            "url_vecchio": (p.get("url_vecchio") or "").strip(),
             "tipo": p["tipo"], "prezzo": float(p["prezzo"]) if p["prezzo"] else None,
-            "prezzo_testo": euro_testo(p["prezzo"]), "n_elementi_dichiarati": int(p["numero_elementi"]),
-            "foto": foto_pagina(sl), "elementi": [],
+            "prezzo_testo": euro_testo(p["prezzo"]), "n_elementi_dichiarati": int(p["numero_elementi"] or 0),
+            "foto": foto, "foto_vecchia": foto_vecchia, "elementi": [], "elementi_tolti": [],
+            "in_vendita": in_vendita, "prima_vista": (p.get("prima_vista") or "").strip(),
+            "ultima_vista": (p.get("ultima_vista") or "").strip(),
+            "categoria_shop": (p.get("categoria") or "").strip(), "categoria_slug": (p.get("categoria_slug") or "").strip(),
         }
 
     # --- elementi distinti (stesso nome in piu' box = un solo elemento)
     elem = {}      # nome originale -> dict
     ordine = []
+    in_box_ora = defaultdict(set)     # url box -> nomi con almeno una riga presente nell'ultima fotografia
+    in_box_tutti = defaultdict(list)  # url box -> tutti i nomi, nell'ordine
     for r in elementi:
         nome = r["nome_elemento"].strip()
         e = elem.get(nome)
         if e is None:
-            e = elem[nome] = {"nome_originale": nome, "righe": [], "box": []}
+            e = elem[nome] = {"nome_originale": nome, "righe": [], "box": [], "box_ora": set()}
             ordine.append(nome)
         e["righe"].append(r)
         if r["url_pagina"] not in e["box"]:
             e["box"].append(r["url_pagina"])
-        b = box.get(r["url_pagina"])
-        if b is not None and nome not in b["elementi"]:
-            b["elementi"].append(nome)
+        if r.get("in_vendita", "si") == "si":
+            e["box_ora"].add(r["url_pagina"])
+            in_box_ora[r["url_pagina"]].add(nome)
+        if nome not in in_box_tutti[r["url_pagina"]]:
+            in_box_tutti[r["url_pagina"]].append(nome)
+    for u, b in box.items():
+        tutti = in_box_tutti.get(u, [])
+        if b["in_vendita"]:       # la composizione di oggi; quello che non c'e' piu' si elenca a parte
+            b["elementi"] = [n for n in tutti if n in in_box_ora[u]]
+            b["elementi_tolti"] = [n for n in tutti if n not in in_box_ora[u]]
+        else:                     # prodotto non piu' in vendita: com'era l'ultima volta
+            b["elementi"] = list(tutti)
 
     # --- id degli elementi
     usati = set()
@@ -565,8 +598,8 @@ def costruisci_cibo():
     ritagli = carica_ritagli()
     box_per_foto = defaultdict(list)
     for u, b in box.items():
-        if b["foto"]:
-            box_per_foto[foto_chiave(b["foto"])].append(b)
+        if b["foto_vecchia"]:       # i ritagli sono scritti per la foto del vecchio shop (stessa fotografia di quella nuova)
+            box_per_foto[foto_chiave(b["foto_vecchia"])].append(b)
     ritagli_senza_box = []
     for nome in ordine:
         e = elem[nome]
@@ -581,6 +614,8 @@ def costruisci_cibo():
             ritagli_senza_box.append(e["id"])
             continue
         e["ritaglio"] = dict(rt, box_id=b["id"], box_nome=b["nome"])
+        if b["foto"] and b["foto"] != b["foto_vecchia"]:
+            e["ritaglio"]["url"] = b["foto"]     # stessa fotografia nello shop nuovo: il vecchio indirizzo non carica piu'
     ritagli_non_usati = sorted(set(ritagli) - {elem[n]["id"] for n in ordine if elem[n]["ritaglio"]})
 
     # --- province mancanti (comune -> provincia dagli altri dati)
@@ -669,7 +704,12 @@ def costruisci_cibo():
     for nome in ordine:
         e = elem[nome]
         origini, viste = [], set()
-        for r in e["righe"]:
+        e["in_vendita"] = any(b_u in box and box[b_u]["in_vendita"] for b_u in e["box_ora"])
+        e["ultima_vista"] = max((r.get("ultima_vista") or "" for r in e["righe"]), default="")
+        e["prima_vista"] = min((r.get("prima_vista") or "9999" for r in e["righe"]), default="")
+        # le righe presenti nell'ultima fotografia vengono prima: se la stessa origine c'e' due volte vale quella di oggi
+        for r in sorted(e["righe"], key=lambda r: r.get("in_vendita", "si") != "si"):
+            vecchia = e["in_vendita"] and r.get("in_vendita", "si") != "si"
             frase = r["frase_origine"].strip()
             ha_luogo = bool(r["indirizzo"] or r["comune"] or r["bollo_ce"] or r["produttore_nominato"])
             if r["sede_peck"] == "si":
@@ -705,6 +745,7 @@ def costruisci_cibo():
                 "comune": r["comune"], "provincia": sg or r["provincia"], "paese": paese,
                 "bollo": r["bollo_ce"], "nominato": r["produttore_nominato"],
                 "azienda": aid, "stato": stato, "nota": r["nota"],
+                "vecchia": vecchia, "ultima_vista": r.get("ultima_vista", ""),
             })
             if aid and r["comune"] and aid in aziende_out:
                 aziende_out[aid]["luoghi"][(r["comune"], sg, paese)] += 1
@@ -713,8 +754,10 @@ def costruisci_cibo():
         # se un elemento ha una frase vera, non serve mostrare anche la riga 'nessuna indicazione'
         if any(o["stato"] != NESSUNA for o in origini):
             origini = [o for o in origini if o["stato"] != NESSUNA or o["frase"]]
+        origini.sort(key=lambda o: o["vecchia"])      # stabile: le indicazioni di oggi prima di quelle non piu' sulla scheda
         e["origini"] = origini
-        e["stato"] = min((o["stato"] for o in origini), key=ORDINE_STATI.index, default=NESSUNA)
+        di_oggi = [o for o in origini if not o["vecchia"]] or origini
+        e["stato"] = min((o["stato"] for o in di_oggi), key=ORDINE_STATI.index, default=NESSUNA)
 
     # righe di aziende.csv che nessun prodotto ha usato ma che sono della stessa azienda
     # (per esempio il bollo CE di un'azienda gia' trovata dal suo indirizzo): si aggiungono alle sue chiavi
@@ -776,6 +819,8 @@ def costruisci_cibo():
         dispensa.append({
             "id": e["id"], "nome": e["nome"], "nome_originale": e["nome_originale"],
             "categoria": e["categoria"], "stato": e["stato"], "regioni": e["regioni"],
+            "in_vendita": e["in_vendita"], "ultima_vista": e["ultima_vista"], "prima_vista": e["prima_vista"],
+            "box_ora": [box[u]["id"] for u in e["box"] if u in box and u in e["box_ora"] and box[u]["in_vendita"]],
             "foto": e["foto"], "foto_tipo": e["foto_tipo"], "foto_da": e["foto_da"],
             "disegno": e["disegno"], "delivery": e["delivery"], "ritaglio": e["ritaglio"],
             "box": [id_box[u] for u in e["box"] if u in id_box], "origini": e["origini"],
@@ -788,6 +833,9 @@ def costruisci_cibo():
             "prezzo": b["prezzo"], "prezzo_testo": b["prezzo_testo"],
             "n_elementi": len(b["elementi"]), "n_elementi_dichiarati": b["n_elementi_dichiarati"],
             "foto": b["foto"], "elementi": [id_el[n] for n in b["elementi"]],
+            "elementi_tolti": [id_el[n] for n in b["elementi_tolti"]], "in_vendita": b["in_vendita"],
+            "prima_vista": b["prima_vista"], "ultima_vista": b["ultima_vista"], "url_vecchio": b["url_vecchio"],
+            "categoria_shop": b["categoria_shop"], "categoria_slug": b["categoria_slug"],
         })
     produttori = []
     for z in aziende_out.values():
@@ -809,6 +857,9 @@ def costruisci_cibo():
         "categorie": dict(Counter(d["categoria"] for d in dispensa)),
         "approssimati": aziende.approssimati,
         "foto_box": sum(1 for b in box_out if b["foto"]),
+        "box_in_vendita": sum(1 for b in box_out if b["in_vendita"]), "box_fuori": sum(1 for b in box_out if not b["in_vendita"]),
+        "dispensa_fuori": sum(1 for d in dispensa if not d["in_vendita"]),
+        "categorie_shop": dict(Counter(b["categoria_slug"] or "(vecchio shop)" for b in box_out)),
         "foto_elementi": Counter(d["foto_tipo"] or "nessuna" for d in dispensa),
         "disegni": Counter(d["disegno"] or "(foto propria)" for d in dispensa),
         "box_conteggio_diverso": [(b["nome"], b["n_elementi"], b["n_elementi_dichiarati"])
@@ -1397,6 +1448,27 @@ def badge(stato):
             f'{H(STATI_TESTO.get(stato, stato))}</span>')
 
 
+def testo_fuori(ultima):
+    """«Non più in vendita online — visto l'ultima volta il 24 ottobre 2026»."""
+    quando = f" — visto l’ultima volta il {data_lunga(ultima)}" if ultima else ""
+    return f"Non più in vendita online{quando}"
+
+
+def etichetta_fuori(in_vendita, ultima):
+    """Il segno «non più in vendita online» di schede e pagine (vuoto se il prodotto e' ancora in vendita)."""
+    if in_vendita:
+        return ""
+    return f'<span class="non-vendita">{H(testo_fuori(ultima))}</span>'
+
+
+def avviso_fuori(chi, ultima):
+    """Il riquadro in cima alla pagina di un prodotto o di una box che non e' piu' nello shop (non si toglie mai).
+    chi = «Questa box è stata» / «Questo prodotto è stato»."""
+    return (f'<p class="avviso-fuori" role="note"><strong>{H(testo_fuori(ultima))}.</strong> {H(chi)} in vendita sullo shop '
+            f'di Peck, e questa pagina resta qui perché non togliamo mai niente: dati, origine e foto sono quelli '
+            f'dell’ultima volta che l’abbiamo visto. Nello shop di oggi non c’è più (o ha cambiato nome o formato).</p>')
+
+
 SEGNAPOSTO = {
     "cibo": '<div class="segnaposto cibo" role="img" aria-label="Foto non disponibile"></div>',
     "vino": '<div class="segnaposto vino" role="img" aria-label="Foto non disponibile"></div>',
@@ -1534,8 +1606,8 @@ def layout(*, titolo, descr, corpo, rel, sezione, home=False, assoluto=False, re
 <footer class="piede">
   <div class="contenitore">
     <p class="avviso-fondo">{H(AVVISO)}</p>
-    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (shop.peck.it e delivery.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
-    <p><a href="{r}come-funziona/">Come funziona</a> · <a href="{REPO}" target="_blank" rel="noopener noreferrer">Dati e codice su GitHub{sr_nuova_scheda()}</a> · Fotografia dei dati: {data_lunga(DATA_FOTOGRAFIA)}</p>
+    <p>Le foto non sono nostre e non sono copiate qui: si caricano direttamente dai server di Peck (peck.it e delivery.peck.it) e di Winerim, che ne restano proprietari. I nomi dei prodotti e dei vini sono quelli scritti da Peck.</p>
+    <p><a href="{r}come-funziona/">Come funziona</a> · <a href="{REPO}" target="_blank" rel="noopener noreferrer">Dati e codice su GitHub{sr_nuova_scheda()}</a> · Fotografia dello shop: {data_lunga(DATA_SHOP)}</p>
   </div>
 </footer>
 <script>{carica}</script>
@@ -1653,7 +1725,7 @@ def prepara_cibo(dispensa, box, produttori):
     boxes = {b["id"]: b for b in box}
     ordine = ["certa", "probabile", "peck", "non trovata", "nessuna"]
     for it in dispensa:
-        it["best"] = sorted(it["origini"], key=lambda o: ordine.index(o["stato"]))[0] if it["origini"] else None
+        it["best"] = sorted(it["origini"], key=lambda o: (o["vecchia"], ordine.index(o["stato"])))[0] if it["origini"] else None
         it["aziende"] = list(dict.fromkeys(o["azienda"] for o in it["origini"] if o["azienda"]))
         pezzi = [it["nome"], it["nome_originale"], it["categoria"], *it["regioni"]]
         for o in it["origini"]:
@@ -1707,11 +1779,12 @@ def voce_prodotto(it, az, r):
     province = "|" + "|".join(sorted({o["provincia"] for o in it["origini"] if o["provincia"]})) + "|"
     dove_html = f'<span class="col-c">{H(dove)}</span>' if dove else '<span class="col-c"></span>'
     return (f'<li class="it" data-k="{H(it["k"])}" data-c="{H(it["categoria"])}" data-g="{H(regioni)}" '
-            f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}" data-cp="{1 if it.get("chip") else 0}">'
+            f'data-p="{H(province)}" data-s="{H(it["stato"])}" data-n="{1 if it["shop"] else 0}" data-cp="{1 if it.get("chip") else 0}" '
+            f'data-v="{"si" if it["in_vendita"] else "no"}">'
             f'<a class="scheda" href="{r}prodotto/{it["id"]}/">'
             f'{immagine_cibo(it, r)}'
             f'<div class="corpo"><div class="col-a"><span class="cat">{H(cap(it["categoria"]))}</span>'
-            f'<p class="nome">{H(it["nome"])}</p>{prezzo_scheda(it)}{chip_confronto(it)}</div>'
+            f'<p class="nome">{H(it["nome"])}</p>{etichetta_fuori(it["in_vendita"], it["ultima_vista"])}{prezzo_scheda(it)}{chip_confronto(it)}</div>'
             f'<p class="meta"><span class="col-b">{chi}</span>{dove_html}</p>'
             f'<div class="col-d">{badge(stato)}</div></div></a></li>')
 
@@ -1729,11 +1802,17 @@ def pagina_dispensa(dispensa, az, r_rel, home=False):
         ctl_select("prov", "Provincia", [(p, p, g) for p, g in prov], "p", "multi", "Tutte", dip="reg") +
         ctl_select("cert", "Quanto siamo sicuri", [(s, cap(STATI_TESTO[s])) for s in
                                                     ("certa", "probabile", "peck", "non trovata", "nessuna")], "s") +
+        ctl_select("vend", "Disponibilità", [("si", "In vendita ora"), ("no", "Non più in vendita online")], "v",
+                   vuoto="Tutti (anche non più in vendita)") +
         ctl_spunta("shop", "Il produttore ha uno shop online", "n") +
         ctl_spunta("cp", "Con confronto prezzi", "cp"))
+    n_fuori = sum(1 for it in dispensa if not it["in_vendita"])
+    nota_fuori = (f" {num(n_fuori)} {'prodotto non è più' if n_fuori == 1 else 'prodotti non sono più'} in vendita online: restano qui, "
+                  f"con la data dell’ultima volta che li abbiamo visti (non togliamo mai niente)." if n_fuori else
+                  " Se un prodotto sparisce dallo shop resta qui, segnato «non più in vendita online» con la data dell’ultima volta che l’abbiamo visto.")
     corpo = f"""<section>
 <h1 class="titolo-pagina">Dispensa</h1>
-<p class="intro">Ogni prodotto alimentare che Peck vende online, una volta sola anche se sta in più box. Per ognuno: chi lo fa e dove, e quanto siamo sicuri. Dove abbiamo trovato lo stesso prodotto sul sito del produttore c’è anche il confronto dei prezzi.</p>
+<p class="intro">Ogni prodotto alimentare che Peck vende online, una volta sola anche se sta in più box. Per ognuno: chi lo fa e dove, e quanto siamo sicuri. Dove abbiamo trovato lo stesso prodotto sul sito del produttore c’è anche il confronto dei prezzi.{nota_fuori}</p>
 {form_filtri("Filtri: dispensa", ctl_cerca("Cerca un prodotto, un’azienda o un paese", "per esempio: panettone, Pordenone, tartufo"), campi)}
 {barra_lista(conta_testo(len(dispensa), "prodotto", "prodotti"))}
 {lista_html(["Prodotto", "Chi lo fa", "Dove", "Quanto siamo sicuri"], voci, "prodotto", "prodotti")}
@@ -1765,7 +1844,7 @@ def scheda_box_corta(b, r):
     return (f'<a class="scheda" href="{r}box/{b["id"]}/">'
             f'{foto_html(b["foto"], "Foto di " + b["nome"] + " dal sito Peck")}'
             f'<div class="corpo"><span class="cat">{"Box regalo" if b["tipo"] == "box" else "Prodotto singolo"}</span>'
-            f'<p class="nome">{H(b["nome"])}</p>'
+            f'<p class="nome">{H(b["nome"])}</p>{etichetta_fuori(b["in_vendita"], b["ultima_vista"])}'
             f'<p class="meta"><span class="prezzo">{H(b["prezzo_testo"])}</span><br>'
             f'{b["n_elementi"]} {"prodotto" if b["n_elementi"] == 1 else "prodotti"}</p></div></a>')
 
@@ -1788,12 +1867,17 @@ def pagina_prodotto(it, az, boxes, r):
         riga("Regione o paese", o["regione"] or o["paese"])
         riga("Bollo sanitario / codice", o["bollo"])
         riga("Produttore nominato da Peck", o["nominato"])
-        etichetta = ("Come lo scrive Peck" + (f" ({o['ruolo']})" if o["ruolo"] else "")) if o["frase"] else "Origine"
+        etichetta = (("Come lo scriveva Peck" if o.get("vecchia") else "Come lo scrive Peck")
+                     + (f" ({o['ruolo']})" if o["ruolo"] else "")) if o["frase"] else "Origine"
         frase = (f'<blockquote class="frase">«{H(o["frase"])}»</blockquote>' if o["frase"]
                  else "<p>Nella scheda del prodotto Peck non scrive dove è fatto.</p>")
         nota = ""
         if o["nota"] and not re.search(r"nessuna frase|stessa origine", o["nota"]):
             nota = f'<p class="meta">Nota: {H(o["nota"])}</p>'
+        if o.get("vecchia"):
+            nota += (f'<p class="meta nota-vecchia">Questa indicazione non c’è più nella scheda di Peck di oggi: '
+                     f'l’abbiamo letta l’ultima volta il {H(data_lunga(o["ultima_vista"]))}. Può essere un cambio di fornitore, '
+                     f'o solo una frase che Peck ha tolto dal testo.</p>')
         riq = ""
         if z:
             titolo = (f'<a href="{r}produttore/{z["id"]}/">{H(z["nome"])}</a>'
@@ -1837,6 +1921,7 @@ def pagina_prodotto(it, az, boxes, r):
 <p class="etichetta">{H(cap(it["categoria"]))}</p>
 <h1>{H(it["nome"])}</h1>
 <p class="originale">Nome su Peck: {H(it["nome_originale"])}</p>
+{avviso_fuori("Questo prodotto è stato", it["ultima_vista"]) if not it["in_vendita"] else ""}
 {blocco_prezzo(it)}
 {nota_foto}
 <p>{badge(it["stato"])} {piu}</p>
@@ -1863,24 +1948,37 @@ def pagina_prodotto(it, az, boxes, r):
 # ---------------------------------------------------------------------------
 
 def pagina_box_lista(box, items):
+    cat_shop = []
+    for b in box:
+        if b["categoria_slug"] and all(c[0] != b["categoria_slug"] for c in cat_shop):
+            cat_shop.append((b["categoria_slug"], b["categoria_shop"] or b["categoria_slug"]))
     ord_nome = {b["id"]: i for i, b in enumerate(sorted(box, key=lambda b: nz(b["nome"])))}
     voci = []
     for b in box:
         tipo = "Box regalo" if b["tipo"] == "box" else "Prodotto singolo"
         voci.append(
             f'<li class="it" data-k="{H(b["k"])}" data-t="{H(b["tipo"])}" data-o-nome="{ord_nome[b["id"]]}" '
-            f'data-o-prezzo="{b["prezzo"] if b["prezzo"] is not None else 0}" data-o-n="{b["n_elementi"]}">'
+            f'data-o-prezzo="{b["prezzo"] if b["prezzo"] is not None else 0}" data-o-n="{b["n_elementi"]}" '
+            f'data-v="{"si" if b["in_vendita"] else "no"}" data-sc="{H(b["categoria_slug"])}">'
             f'<a class="scheda" href="../box/{b["id"]}/">{foto_html(b["foto"], "Foto di " + b["nome"] + " dal sito Peck")}'
-            f'<div class="corpo"><div class="col-a"><span class="cat">{tipo}</span><p class="nome">{H(b["nome"])}</p></div>'
+            f'<div class="corpo"><div class="col-a"><span class="cat">{tipo}</span><p class="nome">{H(b["nome"])}</p>'
+            f'{etichetta_fuori(b["in_vendita"], b["ultima_vista"])}</div>'
             f'<p class="meta"><span class="col-b">{b["n_elementi"]} {"prodotto" if b["n_elementi"] == 1 else "prodotti"}</span>'
             f'<span class="col-c prezzo">{H(b["prezzo_testo"])}</span></p>'
             f'<div class="col-d"><span class="meta">{tipo}</span></div></div></a></li>')
     campi = (ctl_select("ord", "Ordina", [("prezzo-su", "Prezzo: dal più basso"), ("prezzo-giu", "Prezzo: dal più alto"),
                                           ("n", "Più prodotti")], modo="ord", vuoto="Nome") +
-             ctl_select("tipo", "Tipo", [("box", "Box regalo"), ("singolo", "Prodotto singolo")], "t"))
+             ctl_select("tipo", "Tipo", [("box", "Box regalo"), ("singolo", "Prodotto singolo")], "t") +
+             ctl_select("sc", "Categoria dello shop", cat_shop, "sc") +
+             ctl_select("vend", "Disponibilità", [("si", "In vendita ora"), ("no", "Non più in vendita online")], "v",
+                        vuoto="Tutti (anche non più in vendita)"))
+    n_ora = sum(1 for b in box if b["in_vendita"])
+    n_fuori = len(box) - n_ora
+    fuori_txt = (f" {num(n_fuori)} {'non è più' if n_fuori == 1 else 'non sono più'} in vendita online: {'resta' if n_fuori == 1 else 'restano'} qui, "
+                 f"con la data dell’ultima volta che {'l’abbiamo visto' if n_fuori == 1 else 'le abbiamo viste'} (non togliamo mai niente)." if n_fuori else "")
     return f"""<section>
 <h1 class="titolo-pagina">Box regalo</h1>
-<p class="intro">Le {len(box)} pagine dello shop di Peck: box regalo e qualche prodotto singolo (panettoni, pandoro, salmone). Aprine una per vederla “spacchettata”: ogni prodotto con chi lo fa.</p>
+<p class="intro">Le {len(box)} pagine dello shop di Peck ({num(n_ora)} in vendita ora): box regalo, box di vini e distillati, grandi lievitati e dolci in latta. Aprine una per vederla “spacchettata”: ogni prodotto con chi lo fa.{fuori_txt}</p>
 {form_filtri("Filtri: box regalo", ctl_cerca("Cerca una box", "per esempio: Krug, tartufo, caffè"), campi)}
 {barra_lista(conta_testo(len(box), "pagina", "pagine"))}
 {lista_html(["Box", "Quanti prodotti", "Prezzo", "Tipo"], chr(10).join(voci), "pagina", "pagine")}
@@ -1896,6 +1994,13 @@ def pagina_box(b, items, az, r, bv=None):
         righe.append(f'<li><a class="riga-el" href="{r}prodotto/{it["id"]}/">'
                      f'<span><span class="cat">{H(cap(it["categoria"]))}</span><br><span class="nome">{H(it["nome"])}</span></span>'
                      f'<span class="meta">{chi}{(" · " + H(dove)) if dove else ""}</span>{badge(stato)}</a></li>')
+    tolti = [items[i] for i in b.get("elementi_tolti", []) if i in items]
+    tolti_html = ""
+    if tolti:
+        voci_t = "".join(f'<li><a href="{r}prodotto/{it["id"]}/">{H(it["nome"])}</a></li>' for it in tolti)
+        tolti_html = (f'<h3>Non più in questa box</h3><p class="meta">Erano nella pagina di Peck quando l’abbiamo guardata la prima volta; '
+                      f'nell’ultima fotografia non ci sono più (la pagina può essere cambiata o può aver cambiato i nomi).</p>'
+                      f'<ul class="elenco-semplice">{voci_t}</ul>')
     tipo = "Box regalo" if b["tipo"] == "box" else "Prodotto singolo"
     corpo = f"""{briciole(r, ("Box regalo", "box/"), (b["nome"], None))}
 <article>
@@ -1904,15 +2009,15 @@ def pagina_box(b, items, az, r, bv=None):
 <div>
 <p class="etichetta">{tipo}</p>
 <h1>{H(b["nome"])}</h1>
-<p><span class="prezzo">{H(b["prezzo_testo"])}</span><span class="meta"> · prezzo scritto da Peck, il giorno della fotografia dei dati</span></p>
+{avviso_fuori("Questa pagina è stata", b["ultima_vista"]) if not b["in_vendita"] else ""}
+<p><span class="prezzo">{H(b["prezzo_testo"])}</span><span class="meta"> · prezzo scritto da Peck{(" il " + data_lunga(b["ultima_vista"])) if b["ultima_vista"] else ", il giorno della fotografia dei dati"}</span></p>
 <p>{len(its)} {"prodotto" if len(its) == 1 else "prodotti"}; per {con_azienda} abbiamo trovato l’azienda (certa o probabile).</p>
-<div class="gruppo-bottoni">{ext(b["url"], "Vedi la pagina su Peck", "bottone secondario piccolo")}</div>
-<p class="meta">Su questo sito non si compra niente: il link porta alla pagina originale di Peck.</p>
+{('<div class="gruppo-bottoni">' + ext(b["url"], "Vedi la pagina su Peck", "bottone secondario piccolo") + '</div><p class="meta">Su questo sito non si compra niente: il link porta alla pagina originale di Peck.</p>') if b["in_vendita"] else '<p class="meta">Non c’è il link allo shop: la pagina non esiste più.</p>'}
 </div>
 </div>
-<section class="sezione"><h2>La box spacchettata</h2>
+<section class="sezione"><h2>{"La box spacchettata" if b["in_vendita"] else "La box spacchettata (com’era l’ultima volta)"}</h2>
 <ul class="righe">{"".join(righe)}</ul>
-</section>
+{tolti_html}</section>
 {blocco_valore(b, bv, items, r)}
 </article>"""
     descr = f"{b['nome']} ({b['prezzo_testo']}): i {len(its)} prodotti della pagina Peck con chi li fa e dove. {AVVISO}"
@@ -1995,7 +2100,7 @@ def pagina_produttore(z, items, az, r):
     if z.get("fuori"):
         voci_t = "".join(f"<li>{H(t)}</li>" for t in z.get("prodotti_testo") or [])
         sezione_prodotti = ('<section class="sezione"><h2>Fuori dallo shop online del 2026</h2>'
-                            '<p>Nello shop online di Peck, nella fotografia del ' + data_lunga(DATA_FOTOGRAFIA) + ', non c’è nessun prodotto che risulti fatto da questa azienda. '
+                            '<p>Nello shop online di Peck, nella fotografia del ' + data_lunga(DATA_SHOP) + ', non c’è nessun prodotto che risulti fatto da questa azienda. '
                             'La abbiamo trovata in una fotografia di una data passata (vedi sotto), nel servizio delivery di Peck o in un secondo giro di ricerche.</p>'
                             + (f'<p class="meta">Prodotti collegati, come li scrive la ricerca:</p><ul>{voci_t}</ul>' if voci_t else "") + "</section>")
     else:
@@ -3445,10 +3550,10 @@ def nome_azienda_link(aid, az, r):
 
 
 def oggi_di(it, az, r):
-    """[html] di chi fa oggi (24 ottobre 2026) il prodotto: azienda e luogo, uno per origine diversa."""
+    """[html] di chi fa oggi (ultima fotografia dello shop) il prodotto: azienda e luogo, uno per origine diversa."""
     out, visti = [], set()
     for o in it["origini"]:
-        if o["stato"] == "nessuna" or not o["azienda"]:
+        if o["stato"] == "nessuna" or not o["azienda"] or o.get("vecchia"):
             continue
         z = az.get(o["azienda"])
         dove = luogo(o["comune"] or o.get("comune_azienda") or (z and z["comune"]) or "",
@@ -3498,7 +3603,7 @@ def blocco_storia(it, az, r):
             f'<div class="storia{" cambiato" if cambiato else ""}">{testa}<ol class="linea">'
             f'<li><span class="data">{H(data_lunga(g["data"]))}</span><div>{"".join(riga_2025(ri, az, r) for ri in g["righe"])}'
             f'<p class="meta">{H(cap(g["fonte"]))}.</p></div></li>'
-            f'<li class="oggi"><span class="data">{H(DATA_FOTOGRAFIA_LUNGA)}</span><div>{oggi_html}'
+            f'<li class="oggi"><span class="data">{H(DATA_SHOP_LUNGA)}</span><div>{oggi_html}'
             f'<p class="meta">Shop online di Peck, il giorno della fotografia dei dati.</p></div></li></ol>{nota}</div>')
     return ('<section class="sezione" id="storia"><h2>Storia del fornitore</h2>'
             '<p class="meta">Che cosa diceva l’etichetta in date diverse, messa accanto a quello che dice oggi lo shop. '
@@ -3548,7 +3653,7 @@ def sezione_fotografie_datate(storico, az):
         f"<li>{H(g['nome'])}" + (" (" + ", ".join(az[a]["nome"] for a in g["aziende"] if a in az) + ")" if g["aziende"] else "") + "</li>"
         for g in spariti)
     return f"""<h2 id="fotografie-datate">Fotografie datate</h2>
-<p>Lo shop di Peck cambia: i fornitori dei prodotti anche. Oltre alla fotografia di oggi ({H(DATA_FOTOGRAFIA_LUNGA)}) teniamo qualche <em>fotografia di una data passata</em>: una pagina dello shop salvata a mano dal proprietario del progetto in quel giorno ({H(fonti)}). Di ogni prodotto si legge solo la frase breve sull’origine, come per oggi (programma <code>src/storico.py</code>, tabella <code>data/storico.csv</code>, file in <code>data/storico_fonti/</code>: per aggiungere una data basta aggiungere un file e rilanciarlo).</p>
+<p>Lo shop di Peck cambia: i fornitori dei prodotti anche. Oltre alla fotografia di oggi ({H(DATA_SHOP_LUNGA)}) teniamo qualche <em>fotografia di una data passata</em>: una pagina dello shop salvata a mano dal proprietario del progetto in quel giorno ({H(fonti)}). Di ogni prodotto si legge solo la frase breve sull’origine, come per oggi (programma <code>src/storico.py</code>, tabella <code>data/storico.csv</code>, file in <code>data/storico_fonti/</code>: per aggiungere una data basta aggiungere un file e rilanciarlo).</p>
 <ul>
 <li><strong>Come si confronta.</strong> Il luogo di produzione di allora (via e comune, o il codice del bollo CE) si mette accanto a quello di oggi: «uguale» se è lo stesso, «diverso» se è cambiato o se oggi la scheda non dice più nulla, «non in vendita online nel 2026» se il prodotto non c’è più nello shop (o c’è in un altro formato). Sono {n_prod} prodotti: {uguali} uguali, {len(cambiati)} diversi, {len(spariti)} non più in vendita online.</li>
 <li><strong>Dove si vede.</strong> Nella pagina di un prodotto, «Storia del fornitore» mostra le date una dopo l’altra e segnala quando il fornitore è cambiato. Nella pagina di un’azienda, «Osservazioni datate» elenca i prodotti che aveva in quelle date, anche se oggi non sono più nello shop: per questo ci sono pagine di aziende che oggi non fanno niente per lo shop online.</li>
@@ -3574,6 +3679,7 @@ def carica_box_valore(box):
     if not f.exists():
         return {}
     per_url = {b["url"]: b for b in box}
+    per_url.update({b["url_vecchio"]: b for b in box if b.get("url_vecchio")})    # i file di box_valore sono scritti con l'url del vecchio shop
     out = {}
     with open(f, encoding="utf-8-sig", newline="") as fh:
         for r in csv.DictReader(fh):
@@ -3596,7 +3702,7 @@ def blocco_valore(b, bv, items, r):
         return ""
     x = bv["r"]
     n_prezzati = int(num_conf(x["n_prezzati"]) or 0)
-    if b["tipo"] != "box" and n_prezzati == 0:
+    if (b["tipo"] != "box" or b.get("categoria_slug")) and n_prezzati == 0:    # i box di vini del nuovo shop: nessun prezzo, niente blocco
         return ""
     n_el = int(num_conf(x["n_elementi"]) or len(bv["righe"]))
     cop = num_conf(x["copertura_pct"]) or 0
@@ -3765,6 +3871,9 @@ def pagina_prezzi(righe, riep, r):
 
 def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storico=(), az=None, riep=None, n_alt=0, n_bv=0, extra=""):
     conta = Counter(d["stato"] for d in dispensa)
+    n_box_ora = sum(1 for b in box if b["in_vendita"])
+    n_box_fuori = len(box) - n_box_ora
+    n_disp_fuori = sum(1 for d in dispensa if not d["in_vendita"])
     def _con(k):
         return sum(1 for w in V["vini"] if w.get("voti") and w["voti"][k])
     VOTI = {"n": sum(1 for w in V["vini"] if w.get("voti") and w["voti"]["t"]),
@@ -3780,7 +3889,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storic
                if VOTI["en"] else "")
     n_delivery = sum(1 for d in dispensa if d.get("delivery"))
     n_foto_delivery = sum(1 for d in dispensa if d.get("foto_tipo") == "delivery")
-    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + [n for n in ("geo", "geo_regioni_vini", "premi_vini", "premi_fonti") if (DATI / f"{n}.csv").exists()] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else []) +         [f"confronto/{n}" for n in ("vini_enoteche_prezzi", "alternative_7", "box_valore", "box_valore_righe") if (DATI / "confronto" / f"{n}.csv").exists()] +         [n for n in ("ritagli", "storico") if (DATI / f"{n}.csv").exists()]
+    csv_nomi = ["prodotti", "elementi", "indirizzi", "altre_origini", "aziende", "delivery_dispensa", "vini", "formati", "cantine", "vini_nelle_box", "tannico_voti", "voti_aperti"] + [n for n in ("storico_shop", "nuovi_da_cercare") if (DATI / f"{n}.csv").exists()] + [n for n in ("geo", "geo_regioni_vini", "premi_vini", "premi_fonti") if (DATI / f"{n}.csv").exists()] + (["voti_enoteche"] if (DATI / "voti_enoteche.csv").exists() else []) +         [f"confronto/{Path(f).stem}" for f in sorted(glob.glob(str(DATI / "confronto" / "risultati_*.csv")))] +         (["confronto/vini_tannico"] if (DATI / "confronto" / "vini_tannico.csv").exists() else []) +         [f"confronto/{n}" for n in ("vini_enoteche_prezzi", "alternative_7", "box_valore", "box_valore_righe") if (DATI / "confronto" / f"{n}.csv").exists()] +         [n for n in ("ritagli", "storico") if (DATI / f"{n}.csv").exists()]
     righe_cat = "".join(
         f"<tr><td>{H(cap(c))}</td><td>" + H(", ".join(
             (f"inizia con «{p[1:].strip()}»" if p.startswith("^") else f"«{p.strip()}»") for p in parole)) + "</td></tr>"
@@ -3842,7 +3951,7 @@ def pagina_come_funziona(dispensa, box, produttori, V, M, righe_conf, CV, storic
 
 <h2>Da dove vengono i dati</h2>
 <ul>
-<li><strong>Lo shop. </strong>Abbiamo letto le {len(box)} pagine dello shop online di Peck e, di ogni prodotto, solo la frase in cui Peck scrive dove è prodotto o confezionato ("Prodotto in via…", "Confezionato da…", il bollo CE degli stabilimenti). Non copiamo ingredienti né descrizioni.</li>
+<li><strong>Lo shop. </strong>Abbiamo letto le {len(box)} pagine dello shop online di Peck ({n_box_ora} in vendita oggi) e, di ogni prodotto, solo la frase in cui Peck scrive dove è prodotto o confezionato ("Prodotto in via…", "Confezionato da…", il bollo CE degli stabilimenti). Non copiamo ingredienti né descrizioni. Lo shop è cambiato: fino al 24 ottobre 2026 stava su shop.peck.it (46 pagine, le «Selezioni Natalizie»); dal 12 novembre 2026 è su peck.it/shop ({sum(1 for b in box if b["categoria_slug"])} pagine: box regalo, box di vini e distillati, grandi lievitati e dolci in latta). Ogni settimana si legge l’API pubblica del nuovo shop e la pagina di ogni prodotto, rispettando il robots.txt. <strong>Non si toglie mai niente</strong>: un prodotto che sparisce dallo shop resta qui con «Non più in vendita online — visto l’ultima volta il…»{(" (oggi " + str(n_box_fuori) + " pagine e " + str(n_disp_fuori) + " prodotti)") if (n_box_fuori or n_disp_fuori) else ""}; se la frase di origine di un prodotto cambia o sparisce, la vecchia resta, segnata, e si vede che il fornitore può essere cambiato (colonne <code>prima_vista</code>, <code>ultima_vista</code>, <code>in_vendita</code> in <code>prodotti.csv</code> ed <code>elementi.csv</code>; il prezzo di ogni data è in <code>storico_shop.csv</code>).</li>
 <li><strong>Le aziende. </strong>Per ogni indirizzo, bollo CE o produttore nominato abbiamo cercato a mano, sul web, chi c’è dietro. Ogni riga ha la sua fonte (registri delle imprese, siti ufficiali, gli elenchi europei degli stabilimenti riconosciuti). Non è un lavoro fatto da un programma.</li>
 <li><strong>Il delivery. </strong>Il servizio delivery di Peck ha un catalogo con prezzi e foto. Per i {n_delivery} prodotti della Dispensa che abbiamo ritrovato lì (nome e formato controllati a mano, uno per uno) mostriamo prezzo e foto, scrivendo ogni volta «{FONTE_DELIVERY}»; se il formato non è lo stesso dello shop (per esempio nel delivery si compra a peso) lo diciamo. La foto è collegata, non copiata. Il resto del catalogo del delivery non è pubblicato qui, e i prezzi cambiano.</li>
 <li><strong>L’enoteca. </strong>La carta dei vini è quella che l’enoteca di Peck pubblica su Winerim: {num(M["n_vini"])} vini di {M["n_cantine"]} cantine. Di ogni vino teniamo i dati strutturati (tipo, uve, formati e prezzi, profilo di degustazione da 0 a 5, qualche indicazione di massima); i testi descrittivi di Winerim non sono copiati: per quelli c’è il link «Scheda completa in enoteca».</li>
@@ -3871,7 +3980,7 @@ Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enot
 
 <h2>I limiti, detti chiaramente</h2>
 <ul>
-<li>È una fotografia del {data_lunga(M["data"])}. Prezzi, box e vini cambiano: oggi il catalogo è quello delle “Selezioni Natalizie”.</li>
+<li>Lo shop di Peck è fotografato il {data_lunga(DATA_SHOP)} e la carta dei vini il {data_lunga(M["data"])}. Prezzi, box e vini cambiano. Del vecchio shop (shop.peck.it, 24 ottobre 2026) restano anche i prodotti che oggi non ci sono più, segnati «non più in vendita online».</li>
 <li>Contiamo solo quello che Peck vende online, non quello che c’è nei suoi negozi.</li>
 <li>L’indirizzo che Peck scrive può essere quello di chi confeziona, non di chi fabbrica. Peck usa “prodotto in”, “prodotto e confezionato in”, “confezionato da” senza spiegare la differenza: noi teniamo la parola e la frase esatta.</li>
 <li>Molte aziende lavorano per conto terzi: fanno il prodotto che Peck vende con il suo nome. Non vuol dire che Peck non c’entri: dice solo chi lo fabbrica.</li>
@@ -3899,7 +4008,7 @@ Il bollino segue questa priorità: un critico su 100 (prima Tannico, poi le enot
 
 <h2>Foto, caratteri e riservatezza</h2>
 <p>I disegni della Dispensa sono nostri; le foto sono quelle delle pagine di Peck e del suo servizio delivery.</p>
-<p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (shop.peck.it e delivery.peck.it) e di Winerim. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
+<p>Le foto non sono copiate su questo sito: il tuo browser le carica dai server di Peck (peck.it e delivery.peck.it) e di Winerim. Le foto del vecchio shop (shop.peck.it) non si caricano più: per i prodotti che non ci sono più resta il nostro disegno. Per questo quei server vedono la tua visita, e se cambiano o tolgono una foto qui compare un riquadro vuoto. I caratteri (Raleway e Playfair Display, gli stessi del sito di Peck) vengono da Google Fonts. Questo sito non usa cookie né statistiche. Il logo di Peck non è mai pubblicato qui.</p>
 
 <h2>Dati e codice</h2>
 <p>Tutto è pubblico: le tabelle (si aprono bene anche con Excel) e i programmi che le costruiscono.</p>
@@ -4338,6 +4447,8 @@ def main():
           f"{st['righe_abbinate']}  ({st['come_abbinate']})")
     print("stato degli elementi:", st["stati_elementi"])
     print("categorie:", st["categorie"])
+    print(f"box in vendita ora: {st['box_in_vendita']}, non piu' in vendita: {st['box_fuori']}; prodotti della Dispensa non piu' in vendita: {st['dispensa_fuori']}; "
+          f"categorie dello shop: {st['categorie_shop']}")
     print("foto elementi:", dict(st["foto_elementi"]), " foto box:", st["foto_box"], "/", st["box"])
     print("disegni della dispensa:", dict(st["disegni"].most_common()))
     mancanti = sorted(d for d in st["disegni"] if d in DISEGNI_NOMI and not (DOCS / "disegni" / f"{d}.svg").exists())

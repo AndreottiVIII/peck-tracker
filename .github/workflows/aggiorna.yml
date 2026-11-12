@@ -57,8 +57,6 @@ jobs:
             data/raw/winerim
             data/raw/tannico
             data/raw/voti
-            data/raw/prodotto_*.html
-            data/raw/elenco_*.html
             !data/raw/voti/xwines/*.zip
             !data/raw/voti/xwines/*.pdf
           key: raw-${{ github.run_id }}
@@ -88,8 +86,6 @@ jobs:
             data/raw/winerim
             data/raw/tannico
             data/raw/voti
-            data/raw/prodotto_*.html
-            data/raw/elenco_*.html
             !data/raw/voti/xwines/*.zip
             !data/raw/voti/xwines/*.pdf
           key: raw-${{ github.run_id }}-${{ github.run_attempt }}

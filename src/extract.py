@@ -1,4 +1,9 @@
-"""Legge data/raw/ e scrive le tabelle in data/.
+"""Legge data/raw/ (le pagine dello shop VECCHIO, shop.peck.it) e scrive le tabelle in data/.
+
+ATTENZIONE: lo shop vecchio e' stato spento il 12/11/2026 (ora c'e' peck.it/shop). Dal 12/11 le tabelle si aggiornano con
+src/extract_shop2.py senza cancellare niente; questo programma rifiuta di girare se `prodotti.csv` ha gia' la colonna
+`in_vendita` (si puo' forzare con --forza-vecchio, ma cancellerebbe lo storico). Le sue funzioni (righe_origine, analizza,
+costruisci_indirizzi, costruisci_altre...) sono usate anche dai programmi dello shop nuovo.
 
 Uso:  python -I src/extract.py
 
@@ -344,6 +349,12 @@ CORREZIONI = {
         "indirizzo": "via Arma di Taggia, Regione Prati e Pescine, Argine sinistro", "comune": "",
         "cap": "18018", "provincia": "IM",
         "nota": "testo confuso: il comune non e' indicato chiaramente (corretto a mano)"},
+    "Prodotto in 53/12 Moo.2 Thonburi-Paktho Road, Karong Muang, Samutsakhon 74000 Thailandia, "
+    "Thakham road Sa-Mae Dam, Banghuntian Bangkok 10150, Thailandia": {
+        "indirizzo": "53/12 Moo.2 Thonburi-Paktho Road, Karong Muang", "cap": "74000", "comune": "Samutsakhon",
+        "provincia": "", "paese": "Thailandia",
+        "nota": "frutta disidratata: due indirizzi in Thailandia (Samutsakhon e Banghuntian, Bangkok); "
+                "si tiene il primo (corretto a mano)"},
     "Imbottigliato in vuia Volterra 207, 50026 San Casciano V.P, Firenze, Italia": {
         "indirizzo": "vuia Volterra 207", "cap": "50026", "comune": "San Casciano V.P",
         "provincia": "Firenze", "nota": "nel testo 'vuia' (refuso); corretto a mano"},
@@ -482,7 +493,93 @@ def righe_origine(el):
     return res
 
 
+def date_righe(rs):
+    """prima_vista, ultima_vista, in_vendita di un gruppo di righe di elementi.csv (vuoti se le righe non hanno date)."""
+    prima = [r["prima_vista"] for r in rs if r.get("prima_vista")]
+    ultima = [r["ultima_vista"] for r in rs if r.get("ultima_vista")]
+    return {"prima_vista": min(prima) if prima else "", "ultima_vista": max(ultima) if ultima else "",
+            "in_vendita": ("si" if any(r.get("in_vendita") == "si" for r in rs) else "no") if ultima else ""}
+
+
+CAMPI_INDIRIZZI = ["indirizzo", "cap", "comune", "provincia", "paese", "sede_peck", "produttori_nominati", "ruoli",
+                   "n_prodotti_distinti", "n_pagine", "n_occorrenze", "prodotti", "prima_vista", "ultima_vista",
+                   "in_vendita"]
+CAMPI_ALTRE = ["tipo", "valore", "paese", "n_prodotti_distinti", "n_pagine", "n_occorrenze", "prodotti",
+               "prima_vista", "ultima_vista", "in_vendita"]
+
+
+def costruisci_indirizzi(elementi):
+    """Indirizzi di produzione unici (con quante volte compaiono) dalle righe di elementi.csv."""
+    gruppi = []   # lista di liste di righe che puntano allo stesso luogo
+    for e in elementi:
+        if not e["indirizzo"] and not e["comune"]:
+            continue
+        for g in gruppi:
+            if stesso_luogo(g[0], e):
+                g.append(e)
+                break
+        else:
+            gruppi.append([e])
+    ind = []
+    for rs in gruppi:
+        primo = max(rs, key=lambda r: bool(r["cap"]) + bool(r["provincia"]))   # la scrittura piu' completa
+        elems = list(OrderedDict.fromkeys(r["nome_elemento"] for r in rs))
+        ind.append({
+            "indirizzo": primo["indirizzo"], "cap": next((r["cap"] for r in rs if r["cap"]), ""),
+            "comune": primo["comune"], "provincia": next((r["provincia"] for r in rs if r["provincia"]), ""),
+            "paese": next((r["paese"] for r in rs if r["paese"]), ""),
+            "sede_peck": "si" if any(r["sede_peck"] for r in rs) else "",
+            "produttori_nominati": "; ".join(OrderedDict.fromkeys(
+                r["produttore_nominato"] for r in rs if r["produttore_nominato"])),
+            "ruoli": "; ".join(OrderedDict.fromkeys(r["ruolo"] for r in rs if r["ruolo"])),
+            "n_prodotti_distinti": len(elems),
+            "n_pagine": len(set(r["url_pagina"] for r in rs)),
+            "n_occorrenze": len(rs),
+            "prodotti": " | ".join(elems),
+            **date_righe(rs),
+        })
+    ind.sort(key=lambda r: (bool(r["sede_peck"]), -r["n_pagine"], r["comune"], r["indirizzo"]))
+    return ind
+
+
+def costruisci_altre(elementi):
+    """Origini senza indirizzo (bolli CE, produttori nominati, solo paese) dalle righe di elementi.csv."""
+    altre = defaultdict(list)
+    for e in elementi:
+        if e["indirizzo"] or e["comune"] or not e["frase_origine"]:
+            continue
+        if e["bollo_ce"]:
+            altre[("bollo", e["bollo_ce"])].append(e)
+        elif e["produttore_nominato"]:
+            altre[("produttore_nominato", e["produttore_nominato"])].append(e)
+        else:
+            altre[("solo_paese_o_vaga", e["frase_origine"])].append(e)
+    out = []
+    for (t, v), rs in altre.items():
+        elems = list(OrderedDict.fromkeys(r["nome_elemento"] for r in rs))
+        out.append({"tipo": t, "valore": v,
+                    "paese": next((r["paese"] for r in rs if r["paese"]), ""),
+                    "n_prodotti_distinti": len(elems),
+                    "n_pagine": len(set(r["url_pagina"] for r in rs)),
+                    "n_occorrenze": len(rs), "prodotti": " | ".join(elems), **date_righe(rs)})
+    out.sort(key=lambda r: (r["tipo"], -r["n_pagine"], r["valore"]))
+    return out
+
+
+def scrivi_csv(nome, righe, campi):
+    with open(OUT / nome, "w", newline="", encoding="utf-8-sig") as fh:  # BOM: si apre bene in Excel
+        w = csv.DictWriter(fh, fieldnames=campi, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(righe)
+
+
 def main():
+    if "--forza-vecchio" not in sys.argv and (OUT / "prodotti.csv").exists():
+        with open(OUT / "prodotti.csv", encoding="utf-8-sig") as fh:
+            if "in_vendita" in (fh.readline() or ""):
+                sys.exit("STOP: data/prodotti.csv ha gia' le colonne dello shop nuovo (in_vendita...). Questo programma "
+                         "rilegge il VECCHIO shop (shop.peck.it, spento il 12/11/2026) e riscriverebbe le tabelle "
+                         "cancellando lo storico. Per aggiornare usare src/extract_shop2.py.")
     pagine = [leggi_pagina(f) for f in sorted(RAW.glob("prodotto_*.html"))]
     if not pagine:
         sys.exit("nessuna pagina in data/raw: lanciare prima src/fetch.py")
@@ -522,61 +619,10 @@ def main():
                 "comune", "provincia", "paese", "produttore_nominato", "bollo_ce", "sede_peck", "nota"]
     scrivi("elementi.csv", elementi, campi_el)
 
-    # ---- indirizzi unici
-    gruppi = []   # lista di liste di righe che puntano allo stesso luogo
-    for e in elementi:
-        if not e["indirizzo"] and not e["comune"]:
-            continue
-        for g in gruppi:
-            if stesso_luogo(g[0], e):
-                g.append(e)
-                break
-        else:
-            gruppi.append([e])
-    ind = []
-    for rs in gruppi:
-        primo = max(rs, key=lambda r: bool(r["cap"]) + bool(r["provincia"]))   # la scrittura piu' completa
-        elems = list(OrderedDict.fromkeys(r["nome_elemento"] for r in rs))
-        ind.append({
-            "indirizzo": primo["indirizzo"], "cap": next((r["cap"] for r in rs if r["cap"]), ""),
-            "comune": primo["comune"], "provincia": next((r["provincia"] for r in rs if r["provincia"]), ""),
-            "paese": next((r["paese"] for r in rs if r["paese"]), ""),
-            "sede_peck": "si" if any(r["sede_peck"] for r in rs) else "",
-            "produttori_nominati": "; ".join(OrderedDict.fromkeys(
-                r["produttore_nominato"] for r in rs if r["produttore_nominato"])),
-            "ruoli": "; ".join(OrderedDict.fromkeys(r["ruolo"] for r in rs if r["ruolo"])),
-            "n_prodotti_distinti": len(elems),
-            "n_pagine": len(set(r["url_pagina"] for r in rs)),
-            "n_occorrenze": len(rs),
-            "prodotti": " | ".join(elems),
-        })
-    ind.sort(key=lambda r: (bool(r["sede_peck"]), -r["n_pagine"], r["comune"], r["indirizzo"]))
-    scrivi("indirizzi.csv", ind, ["indirizzo", "cap", "comune", "provincia", "paese", "sede_peck",
-                                  "produttori_nominati", "ruoli", "n_prodotti_distinti", "n_pagine",
-                                  "n_occorrenze", "prodotti"])
-
-    # ---- origini senza indirizzo
-    altre = defaultdict(list)
-    for e in elementi:
-        if e["indirizzo"] or e["comune"] or not e["frase_origine"]:
-            continue
-        if e["bollo_ce"]:
-            altre[("bollo", e["bollo_ce"])].append(e)
-        elif e["produttore_nominato"]:
-            altre[("produttore_nominato", e["produttore_nominato"])].append(e)
-        else:
-            altre[("solo_paese_o_vaga", e["frase_origine"])].append(e)
-    out = []
-    for (t, v), rs in altre.items():
-        elems = list(OrderedDict.fromkeys(r["nome_elemento"] for r in rs))
-        out.append({"tipo": t, "valore": v,
-                    "paese": next((r["paese"] for r in rs if r["paese"]), ""),
-                    "n_prodotti_distinti": len(elems),
-                    "n_pagine": len(set(r["url_pagina"] for r in rs)),
-                    "n_occorrenze": len(rs), "prodotti": " | ".join(elems)})
-    out.sort(key=lambda r: (r["tipo"], -r["n_pagine"], r["valore"]))
-    scrivi("altre_origini.csv", out, ["tipo", "valore", "paese", "n_prodotti_distinti", "n_pagine",
-                                      "n_occorrenze", "prodotti"])
+    ind = costruisci_indirizzi(elementi)
+    scrivi("indirizzi.csv", ind, CAMPI_INDIRIZZI)
+    out = costruisci_altre(elementi)
+    scrivi("altre_origini.csv", out, CAMPI_ALTRE)
 
     # ---- riepilogo a video
     n_box = sum(1 for p in prodotti if p["tipo"] == "box")

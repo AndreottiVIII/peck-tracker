@@ -139,7 +139,12 @@ def main():
     # --- pagine e prodotti (distinti per pagina)
     per_pagina = {}
     nomi_el = []
+    # un prodotto ancora in vendita vale per la composizione di oggi (righe in_vendita = si); uno non piu' in vendita
+    # per com'era l'ultima volta (tutte le sue righe). Senza le colonne nuove (vecchio formato) valgono tutte le righe.
+    in_vendita = {p["url"]: p.get("in_vendita", "si") != "no" for p in prodotti}
     for r in elementi:
+        if in_vendita.get(r["url_pagina"], True) and r.get("in_vendita", "si") == "no":
+            continue
         n = r["nome_elemento"].strip()
         lst = per_pagina.setdefault(r["url_pagina"], [])
         if n not in lst:
@@ -188,7 +193,9 @@ def main():
         n = nz(nome)
         for pezzo, wid, nota in VINI_ENOTECA:
             if pezzo in n:
-                v = per_id[wid]
+                v = per_id.get(wid)
+                if v is None:      # il vino non e' piu' nella carta di Winerim (la carta cambia ogni settimana)
+                    continue
                 return dict(prezzo=float(v["prezzo_euro"]), fonte="enoteca Peck", qualita="diretto",
                             dettaglio=(f"enoteca Peck (Winerim) «{v['nome']}» {v['annata']}, bottiglia 0,75 L, "
                                        f"{float(v['prezzo_euro']):g} €" + (f"; {nota}" if nota else "")))

@@ -110,3 +110,38 @@ Le decisioni prese, con la data e il perche'. Si aggiunge in fondo, non si riscr
   automatica senza autorizzazione scritta del titolare, anche se il robots.txt la permette. Spenti i passi
   Tannico dell'aggiornamento settimanale (TANNICO_ATTIVO = False). Da decidere con Davide: chiedere
   l'autorizzazione o togliere i dati Tannico dal sito.
+- **Tannico, decisione di Davide** (26/10): niente download automatici da Tannico; i dati gia' raccolti
+  restano sul sito come fotografia al 25/10/2026 (da scrivere chiaramente), senza aggiornamenti.
+- **Nuovo shop Peck** (12/11): lo shop e' passato su peck.it/shop (WooCommerce, API pubblica con 73 prodotti;
+  categorie dolci, gift-box, gift-box-wines, grandi-lievitati). Regola di Davide: MAI togliere i prodotti
+  fuori produzione; restano sul sito con "non piu' in vendita online, visto l'ultima volta il ...".
+  Condizioni di vendita Peck, art. 34: vietata la riproduzione dei contenuti (immagini, foto...); nessun
+  divieto esplicito di raccolta automatica.
+- **Foto Peck** (12/11, Davide): sul sito pubblico restano come ora (collegate, non copiate) nonostante l'art. 34; copie salvate solo in archivio/foto_shop/ sul PC.
+- **Passaggio allo shop nuovo, fatto** (12/11/2026): `src/fetch_shop2.py` (API Store di WooCommerce + pagina di ogni prodotto, 2 s di
+  pausa, `data/raw/shop2/<data>/`), `src/scheda_shop2.py` + `src/extract_shop2.py` (aggiornano `prodotti.csv`, `elementi.csv`,
+  `indirizzi.csv`, `altre_origini.csv`, `storico_shop.csv` SENZA cancellare righe), `src/nuovi_da_cercare.py`, `src/foto_shop.py`
+  (copie locali in `archivio/foto_shop/<data>/`, mai su git). 73 prodotti nel nuovo shop: gift-box 37, gift-box-wines 23 (nuovi),
+  grandi-lievitati 8, dolci 5 (4 nuovi). Dei 46 prodotti del vecchio shop (visti il 24/10, non il 25: le pagine sono state
+  scaricate il 24) **tutti e 46 sono nel nuovo shop**, nessuno e' sparito (il «PANETTONE TRADIZIONALE 1 KG» ora si chiama
+  «Panettone Tradizionale»; abbinato per elemento unico e prezzo); i nuovi sono 27 (23 box di vini e distillati, 4 latte di dolci).
+- **Come e' scritta la scheda nel nuovo shop** (12/11): le frasi di origine non sono nell'API ma solo nella pagina (riquadro «Scheda
+  prodotto»), come blocco di testo unico senza separatori; i vini non hanno il nome nella scheda (solo «PRODOTTO IN FRANCIA DA
+  KRUG»): si abbinano alle righe della «Descrizione» dell'API. La scheda nuova e' anche piu' corta della vecchia (sparite per
+  esempio le frasi «Confezionato da: Sapori di Norcia», «Prodotto in via Salara 9, Roseto degli Abruzzi» sulle paste, un secondo
+  indirizzo di Robbio sul riso): quelle righe restano in `elementi.csv` con `in_vendita = no` e sul sito sono segnate «non c'e'
+  piu' nella scheda di oggi»; non sappiamo se e' un cambio di fornitore o solo una frase tolta dal testo.
+- **Regole dei dati** (12/11): una riga di `elementi.csv` = una frase di origine; due righe sono la stessa origine se hanno lo stesso
+  elemento e lo stesso luogo/bollo/produttore (le differenze di punteggiatura o «Prodotto in» / «Prodotto e confezionato in» non
+  contano); se l'origine cambia la riga vecchia resta (no) e se ne aggiunge una nuova (si). `id_prodotto` = lo slug di prima, cosi'
+  i link del sito non cambiano. Se l'API restituisce meno di 20 prodotti non cambia niente. Nel weekly il passo `shop` va per primo.
+- **Foto** (12/11): le foto di shop.peck.it non caricano piu' (301 verso una pagina HTML); le foto del nuovo shop sono le stesse
+  fotografie (44 box confrontate con le miniature), quindi i 116 ritagli (scritti sulle vecchie foto) puntano alle nuove con gli stessi
+  rettangoli. 73 foto archiviate in locale (8,9 MB, `archivio/foto_shop/2026-11-12/`, indice in `indice.csv`); le 46 del vecchio shop
+  non caricano piu' (restano le copie del 25/10 in `archivio/foto_box/`).
+- **Sito** (12/11): etichetta «Non piu' in vendita online — visto l'ultima volta il ...» su schede e pagine, filtro «Disponibilita'»
+  (predefinito: tutti) in Dispensa e Box regalo, filtro «Categoria dello shop», «Non piu' in questa box»; footer «Fotografia dello shop».
+  Regenerate solo le pagine del cibo, delle box, dei produttori e le pagine generali: **vino/, cantina/, enoteca/ e vini.json restano
+  quelli del 9/11** (il computer ha una copia piu' vecchia di `data/raw/winerim`, rigenerarle avrebbe tolto le foto di molti vini; le
+  riscrive il prossimo aggiornamento settimanale). `src/box_valore.py`: corretto un KeyError (un vino non piu' nella carta di Winerim)
+  e ora conta solo la composizione di oggi delle box ancora in vendita.
