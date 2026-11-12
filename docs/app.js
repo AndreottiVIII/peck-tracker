@@ -119,6 +119,7 @@
   if (!form || !cont) return;
 
   const controlli = [...form.querySelectorAll('[name]')];
+  const tipi = [...form.querySelectorAll('input[data-tipo]')];
   const params = new URLSearchParams(location.search);
   let vista = params.get('vista') === 'elenco' ? 'elenco' : 'schede';
 
@@ -128,6 +129,7 @@
       if (c.type === 'checkbox') S[c.name] = c.checked ? '1' : '';
       else S[c.name] = c.value.trim();
     }
+    for (const c of tipi) S[c.dataset.tipo] = c.checked ? '' : '0';   // «Cibo» e «Vini» sono accese di default: nell'indirizzo si scrive solo ?vini=0 / ?cibo=0
     return S;
   }
 
@@ -160,6 +162,8 @@
     if (c.type === 'checkbox') c.checked = v === '1';
     else c.value = v;
   }
+
+  for (const c of tipi) c.checked = params.get(c.dataset.tipo) !== '0';
 
   // menu a tendina che dipendono da un altro (provincia da regione, regione da paese)
   const dipendenti = controlli.filter(c => c.dataset.dip);
@@ -509,6 +513,8 @@
       const q = norm(S.q || '').split(/\s+/).filter(Boolean);
       const modo = S.ord;
       const arr = V.righe.filter(r => {
+        if (S.vini === '0' && r.t === 'v') return false;
+        if (S.cibo === '0' && r.t === 'c') return false;
         if (S.cat && r.g !== S.cat) return false;
         if (S.reg && !(r.t === 'v' && r.r === S.reg)) return false;
         if (FUORI) {
@@ -613,6 +619,7 @@
   });
   form.querySelector('.azzera').addEventListener('click', () => {
     for (const c of controlli) { if (c.type === 'checkbox') c.checked = false; else c.value = ''; }
+    for (const c of tipi) c.checked = true;
     applica();
     controlli[0].focus();
   });
@@ -638,4 +645,38 @@
   mostraVista();
   if (!aggiornaEnoteca) { const S = filtraStatica(); scriviIndirizzo(S); }
   else scriviIndirizzo(leggiStato());
+})();
+
+
+/* ---------- 8. Angolo delle occasioni: spunte «Cibo» e «Vini» (la lista è HTML statico; senza JavaScript si vede tutto) ---------- */
+(() => {
+  'use strict';
+  const f = document.getElementById('tipo-filtro');
+  const conta = document.getElementById('occ-conta');
+  const lista = document.querySelector('ul.occasioni');
+  if (!f || !conta || !lista) return;
+  const cibo = f.querySelector('[data-tipo="cibo"]'), vini = f.querySelector('[data-tipo="vini"]');
+  const vuoto = document.getElementById('occ-vuoto');
+  const voci = [...lista.querySelectorAll('li.occ')];
+  const nC = +conta.dataset.cibo, nV = +conta.dataset.vini;
+  const p = new URLSearchParams(location.search);
+  cibo.checked = p.get('cibo') !== '0';
+  vini.checked = p.get('vini') !== '0';
+  const prod = n => (n === 1 ? '1 prodotto' : n + ' prodotti');
+  function applica() {
+    for (const li of voci) li.hidden = !(li.dataset.t === 'v' ? vini.checked : cibo.checked);
+    const c = cibo.checked ? nC : 0, v = vini.checked ? nV : 0;
+    conta.textContent = `${prod(c + v)} (${c} di cibo, ${v} di vino)`;
+    lista.hidden = !(c + v);
+    vuoto.hidden = !!(cibo.checked || vini.checked);
+    const q = new URLSearchParams(location.search);
+    q.delete('cibo'); q.delete('vini');
+    if (!cibo.checked) q.set('cibo', '0');
+    if (!vini.checked) q.set('vini', '0');
+    const s = q.toString();
+    history.replaceState(null, '', location.pathname + (s ? '?' + s : '') + location.hash);
+  }
+  f.addEventListener('change', applica);
+  f.hidden = false;
+  applica();
 })();

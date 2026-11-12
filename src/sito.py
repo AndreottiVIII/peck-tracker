@@ -1657,6 +1657,12 @@ def ctl_spunta(nome, etichetta, attr, classe=""):
             f'data-modo="flag" data-attr="{attr}"><label for="f-{nome}">{H(etichetta)}</label></div>')
 
 
+def ctl_tipo():
+    """Le due spunte «Cibo» e «Vini» (accese di default; lo stato sta nell'indirizzo come ?vini=0 / ?cibo=0, lo gestisce app.js)."""
+    return ('<div class="campo spunta"><input type="checkbox" id="f-tipo-cibo" data-tipo="cibo" checked><label for="f-tipo-cibo">Cibo</label></div>'
+            '<div class="campo spunta"><input type="checkbox" id="f-tipo-vini" data-tipo="vini" checked><label for="f-tipo-vini">Vini</label></div>')
+
+
 def form_filtri(aria, cerca, campi):
     return f"""<form class="filtri" role="search" aria-label="{H(aria)}" onsubmit="return false">
 {cerca}
@@ -3267,7 +3273,7 @@ def riga_occasione(v, r):
     base = f' <span class="meta">({H(v["base"])})</span>' if v["base"] else ""
     pagina = (f'<a class="vai-pagina" href="{r}{v["href"]}">Vai alla pagina<span class="sr"> di {H(v["nome"])}</span></a>'
               if v["href"] else "")
-    return (f'<li class="occ">{v["foto"]}'
+    return (f'<li class="occ" data-t="{"v" if v["tipo"] == "Vino" else "c"}">{v["foto"]}'
             f'<div class="occ-nome"><p class="cat">{H(v["tipo"])} · {H(v["sim"])}</p><p class="nome">{nome}</p><p class="meta">Confrontato con: {H(v["dove"])}</p>{pagina}</div>'
             f'<div class="occ-prezzi"><div class="lato"><p class="et">Da Peck</p><p class="cifra">{v["peck"]}</p><p>{v["peck_u"]}</p></div>'
             f'<div class="lato"><p class="et">{H(v["et_fuori"])}</p><p class="cifra">{v["fuori"]}</p><p>{v["fuori_u"]}</p>{v["altri"]}</div></div>'
@@ -3286,8 +3292,12 @@ def pagina_occasioni(voci, r):
         elenco = '<p class="vuoto">Per ora nessun prodotto passa la soglia.</p>'
     corpo = f"""<section>
 <h1 class="titolo-pagina">Angolo delle occasioni</h1>
-<p class="intro">I prodotti che da Peck costano <strong>meno</strong> che altrove, o al massimo il <strong>{soglia}% in più</strong>, a parità di peso o di litri. Dentro ci sono solo i confronti sicuri: per il cibo lo stesso prodotto (o uno molto simile) sul sito di chi lo fa, per il vino la stessa bottiglia, dello stesso formato, in uno dei negozi che la vendono oggi (Tannico, Callmewine, Millesima, Xtrawine; prima la stessa annata, poi un’annata vicina, che in quel caso è scritta). Sono {conta_testo(len(occasioni), "prodotto", "prodotti")} ({n_cibo} di cibo, {n_vino} di vino), dal più conveniente. Vuoi vedere <em>tutti</em> i confronti, anche dove Peck costa di più? Sono in <a href="{r}prezzi/">Prezzi confrontati</a>.</p>
+<p class="intro">I prodotti che da Peck costano <strong>meno</strong> che altrove, o al massimo il <strong>{soglia}% in più</strong>, a parità di peso o di litri. Dentro ci sono solo i confronti sicuri: per il cibo lo stesso prodotto (o uno molto simile) sul sito di chi lo fa, per il vino la stessa bottiglia, dello stesso formato, in uno dei negozi che la vendono oggi (Tannico, Callmewine, Millesima, Xtrawine; prima la stessa annata, poi un’annata vicina, che in quel caso è scritta). Sono <span id="occ-conta" data-cibo="{n_cibo}" data-vini="{n_vino}">{conta_testo(len(occasioni), "prodotto", "prodotti")} ({n_cibo} di cibo, {n_vino} di vino)</span>, dal più conveniente. Vuoi vedere <em>tutti</em> i confronti, anche dove Peck costa di più? Sono in <a href="{r}prezzi/">Prezzi confrontati</a>.</p>
 <p class="meta nota-ord">Confronto del {data_lunga(oggi_dati)}. I prezzi degli altri negozi si aggiornano in automatico una volta a settimana; i prezzi di Peck (servizio delivery e carta dell’enoteca) solo a mano, quindi possono essere più vecchi. La soglia (+{soglia}%) è una nostra scelta, non un giudizio su Peck: prezzi e formati cambiano, controlla sempre sulla pagina del negozio. Come si confronta: «<a href="{r}come-funziona/#confronto-prezzi">Come funziona</a>».</p>
+<form class="tipo-filtro" id="tipo-filtro" aria-label="Mostra cibo o vini" onsubmit="return false" hidden>
+<span class="tipo-titolo">Mostra:</span>{ctl_tipo()}
+</form>
+<p class="meta" id="occ-vuoto" role="status" aria-live="polite" hidden>Nessun prodotto: spunta almeno una delle due caselle.</p>
 {elenco}
 <p class="costa-di-piu" id="costa-di-piu">E dove Peck costa di più? Lo stesso prodotto, o uno molto simile, che fuori costa molto meno è in <a href="{r}fuori/"><strong>Fuori da via Spadari</strong></a>.</p>
 </section>""", (f"Prodotti che da Peck costano meno che altrove, o al massimo il {soglia}% in più: cibo confrontato con il sito del produttore, "
@@ -3443,7 +3453,7 @@ def pagina_fuori(fr, riep, r):
                '<optgroup label="Vino">' + "".join(f'<option value="{H(k)}">{H(t)}</option>' for k, t in gruppi_vino) + "</optgroup>")
     opt_reg = "".join(f'<option value="{H(rg)}">{H(rg)} ({H(p)})</option>' for p, rg in regioni)
     opt_dove = "".join(f'<option value="{H(d)}">{H(d)}</option>' for d in dove)
-    campi = (
+    campi = (ctl_tipo() +
         f'<div class="campo"><label for="f-cat">Categoria</label><select id="f-cat" name="cat"><option value="">Tutte</option>{opt_cat}</select></div>'
         f'<div class="campo"><label for="f-reg">Regione del vino</label><select id="f-reg" name="reg"><option value="">Tutte</option>{opt_reg}</select></div>'
         f'<div class="campo"><label for="f-dove">Dove si compra</label><select id="f-dove" name="dove"><option value="">Dappertutto</option>{opt_dove}</select></div>'
@@ -3825,7 +3835,7 @@ def pagina_prezzi(righe, riep, r):
     opt_cat = ('<optgroup label="Cibo">' + "".join(f'<option value="{H(c)}">{H(cap(c))}</option>' for c in gruppi_cibo) + "</optgroup>"
                '<optgroup label="Vino">' + "".join(f'<option value="{H(k)}">{H(t)}</option>' for k, t in gruppi_vino) + "</optgroup>")
     opt_reg = "".join(f'<option value="{H(rg)}">{H(rg)} ({H(p)})</option>' for p, rg in regioni)
-    campi = (
+    campi = (ctl_tipo() +
         f'<div class="campo"><label for="f-cat">Categoria</label><select id="f-cat" name="cat"><option value="">Tutte</option>{opt_cat}</select></div>'
         f'<div class="campo"><label for="f-reg">Regione del vino</label><select id="f-reg" name="reg"><option value="">Tutte</option>{opt_reg}</select></div>'
         '<div class="campo"><label for="f-fonte">Dove si confronta</label><select id="f-fonte" name="fonte"><option value="">Dappertutto</option>'

@@ -616,3 +616,11 @@ ul.prezzi { margin-top: .5rem; }
 }
 .nota-vecchia { border-left: 3px solid #d8c9a0; padding-left: .6rem; }
 .elenco-semplice { margin: .4rem 0 0; padding-left: 1.2rem; }
+
+/* spunte «Cibo» e «Vini» nell'Angolo delle occasioni */
+.tipo-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1.2rem; margin: .8rem 0; }
+.tipo-filtro[hidden] { display: none; }
+.tipo-filtro .campo.spunta { padding-top: 0; }
+.tipo-filtro .campo.spunta label, .tipo-filtro .campo.spunta input { cursor: pointer; }
+.tipo-titolo { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; color: var(--marrone); }
+.occasioni li[hidden], .occasioni[hidden] { display: none; }
