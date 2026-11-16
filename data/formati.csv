@@ -1,12 +1,12 @@
 ﻿litri,formato_nome,righe_vino,prezzo_min,prezzo_max
-0.375,"Mezza bottiglia (37,5 cl)",43,16,560
-0.5,Bottiglia da 50 cl,16,18,310
-0.75,Bottiglia,2431,11,47000
+0.375,"Mezza bottiglia (37,5 cl)",44,16,560
+0.5,Bottiglia da 50 cl,17,18,310
+0.75,Bottiglia,2442,11,47000
 1,Bottiglia da 1 litro,5,50,230
-1.5,Magnum,398,35,15000
+1.5,Magnum,397,35,15000
 2.25,Set / cassa,5,680,7000
 3,Doppio Magnum,4,2200,4900
-3,Jeroboam,83,250,12500
+3,Jeroboam,85,250,12500
 5,Rehoboam (5 L),6,910,6600
 6,Impériale,8,4500,8000
 6,Mathusalem,31,880,25000
