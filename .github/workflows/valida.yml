@@ -1,0 +1,22 @@
+name: Validatore HTML
+
+# Controllo a ogni commit: segnala le pagine scritte male. Non blocca la pubblicazione del sito.
+# Regole in .htmlvalidate.json (le regole di gusto sono spente; i difetti gia' noti sono "warn").
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valida:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validatore HTML
+        run: npx --yes html-validate@9.7.1 "docs/**/*.html"
