@@ -1,0 +1,137 @@
+﻿paese,regione,lat,lon,n_cantine,n_etichette,coordinate_da
+Italia,Langhe,44.4979,7.9765,3,25.3,nominatim
+Italia,Piemonte,45.0607,7.9235,64,302.0,nominatim
+Italia,Toscana,43.4587,11.1389,70,390.3,nominatim
+Francia,Bourgogne,47.2781,4.2225,172,828.6,nominatim
+Francia,Bordeaux,44.8412,-0.5800,72,237.7,nominatim
+Francia,Bordeaux Supérieur,44.8500,-0.3500,1,15.7,manuale (centro approssimativo)
+Francia,Sauternes,44.5328,-0.3414,1,15.7,nominatim
+Italia,Bolgheri,43.2340,10.6179,3,32.7,nominatim
+Italia,Umbria,42.9659,12.4902,2,15.7,nominatim
+Italia,Südtirol - Alto Adige,46.9065,11.0957,1,16.5,nominatim
+Italia,Trentino-Alto Adige,46.4415,11.2821,18,67.5,nominatim
+Italia,Brunello di Montalcino,43.3205,11.3282,3,18.5,nominatim
+Francia,Pessac-Léognan,44.7200,-0.6500,1,14.0,manuale (centro approssimativo)
+Francia,Champagne,49.0500,3.9500,102,299.0,manuale (centro approssimativo)
+Italia,Veneto,45.6477,11.8665,18,46.5,nominatim
+Italia,Rosso di Montalcino,43.0555,11.3594,1,9.5,nominatim
+Francia,Côtes du Rhône,44.3000,4.8000,27,51.0,manuale (centro approssimativo)
+Italia,Lombardia,45.5704,9.7733,17,51.0,nominatim
+Francia,Nuits-Saint-Georges,47.1367,4.9490,3,9.0,nominatim
+Francia,Vosne-Romanée,47.1586,4.9548,4,9.1,nominatim
+Francia,Pauillac,45.1996,-0.7485,1,7.0,nominatim
+Italia,Friuli Venezia Giulia,46.1510,13.0559,23,61.5,nominatim
+Italia,Abruzzo,42.2277,13.8550,9,21.3,nominatim
+Italia,Montepulciano d'Abruzzo,42.1561,14.6068,1,4.7,nominatim
+Spagna,Castiglia e Leon,41.5500,-5.1387,9,23.5,nominatim
+Spagna,Sierra de Gredos,40.3376,-4.8281,1,4.0,nominatim
+Spagna,Tierra de Madrid,40.5248,-3.7716,1,4.0,nominatim
+Italia,Chianti Classico,43.3963,11.3101,1,4.0,nominatim
+Italia,Franciacorta,45.6124,10.0533,4,9.0,nominatim
+Portogallo,Porto,41.1502,-8.6103,3,19.0,nominatim
+Francia,Bonnes-Mares,47.1919,4.9573,1,3.3,nominatim
+Francia,Pomerol,44.9300,-0.2000,1,4.0,manuale (centro approssimativo)
+Francia,Languedoc-Roussillon,43.6542,3.6747,8,18.0,nominatim
+Italia,Barolo,44.6147,7.9394,4,7.2,nominatim
+Italia,Venezia Giulia,45.8000,13.6000,1,3.5,manuale (centro approssimativo)
+Italia,Barbaresco,44.7193,8.0769,2,4.7,nominatim
+Italia,Campania,40.8607,14.8440,7,10.0,nominatim
+Italia,Costa d'Amalfi,40.6688,14.7196,1,2.0,nominatim
+Stati Uniti,California,36.7015,-118.7560,16,29.0,nominatim
+Stati Uniti,Valle de Napa,38.5000,-122.3500,2,3.5,manuale (centro approssimativo)
+Francia,Loire,47.4000,0.7000,20,34.5,manuale (centro approssimativo)
+Francia,Pouilly-Fumé,47.2800,2.9500,3,6.5,manuale (centro approssimativo)
+Spagna,Ribera del Duero,41.6591,-3.6816,2,4.0,nominatim
+Spagna,Galizia,42.6195,-7.8631,11,18.5,nominatim
+Spagna,Ribeira Sacra,42.5196,-7.5141,1,2.5,nominatim
+Italia,Sicilia,37.5878,14.1550,21,53.0,nominatim
+Italia,Barbera d'Alba,44.7661,8.0388,1,1.7,nominatim
+Francia,Toscana,47.4099,-0.4261,2,3.5,nominatim
+Spagna,Rioja,42.3286,-2.4675,6,13.0,nominatim
+Italia,Puglia,40.9843,16.6210,5,10.0,nominatim
+Italia,Friuli Isonzo,45.8262,13.4734,1,2.5,nominatim
+Stati Uniti,Oregon,43.9793,-120.7373,6,11.0,nominatim
+Francia,Saint-Julien,45.1900,-0.7400,1,2.0,manuale (centro approssimativo)
+Spagna,Bierzo,42.6527,-6.6232,2,5.5,nominatim
+Italia,Alpi Retiche,46.3234,10.2584,1,2.0,nominatim
+Francia,Beaujolais,46.0500,4.6000,4,8.0,manuale (centro approssimativo)
+Slovenia,Goriška Brda,45.9985,13.5221,1,2.0,nominatim
+Germania,Rheingau,50.1339,8.0702,1,4.0,nominatim
+Italia,Breganze,45.7037,11.5767,1,2.0,nominatim
+Italia,Verduno,44.6722,7.9363,1,1.0,nominatim
+Australia,Coonawarra,-37.2909,140.8347,1,1.3,nominatim
+Australia,South Australia,-30.5344,135.6301,1,1.3,nominatim
+Australia,Tumbarumba,-35.7765,148.0101,1,1.3,nominatim
+Spagna,Jumilla,38.4735,-1.3285,1,4.0,nominatim
+Spagna,Aragona,41.3787,-0.7639,1,3.0,nominatim
+Francia,Provence,44.0581,6.0639,8,11.5,nominatim
+Francia,Côtes de Provence,43.4368,6.6569,1,1.5,nominatim
+Nuova Zelanda,South Island,-43.5866,171.2123,3,7.5,nominatim
+Stati Uniti,Sta. Rita Hills,34.6500,-120.2500,1,1.5,manuale (centro approssimativo)
+Francia,Jura,46.7834,5.7833,6,6.5,nominatim
+Nuova Zelanda,Marlborough,-41.4745,173.8330,1,1.5,nominatim
+Italia,Roero,44.7958,7.8869,1,1.5,nominatim
+Spagna,Andalusia,37.3400,-4.5812,5,8.0,nominatim
+Italia,Marche,43.3458,13.1416,4,6.0,nominatim
+Italia,Avellino,40.9965,15.1406,3,3.0,nominatim
+Italia,Liguria,44.4778,8.7026,5,7.0,nominatim
+Italia,Luni,44.0850,10.0425,1,1.5,nominatim
+Italia,Collio,45.9500,13.5500,1,1.5,manuale (centro approssimativo)
+Australia,Gippsland,-37.8745,146.9112,1,1.5,nominatim
+Australia,Victoria,-36.5986,144.6780,3,4.5,nominatim
+Spagna,Catalogna,41.8523,1.5745,1,1.5,nominatim
+Spagna,Priorat,41.2138,0.8116,2,2.5,nominatim
+Italia,Sardegna,40.0913,9.0306,9,11.0,nominatim
+Nuova Zelanda,Canterbury,-43.4942,171.8098,1,2.0,nominatim
+Libano,Bekaa Valley,33.8511,35.9571,1,2.0,nominatim
+Francia,Alsace,48.3000,7.4000,6,8.0,manuale (centro approssimativo)
+Germania,Mosel,49.9500,7.0500,3,5.0,manuale (centro approssimativo)
+Israele,Golan,33.0106,35.7495,2,4.0,nominatim
+Italia,Valle d'Aosta,45.7301,7.3874,1,2.0,nominatim
+Italia,Etna,37.7510,14.9940,2,2.0,nominatim
+Italia,Taurasi,41.0084,14.9574,1,1.0,nominatim
+Australia,Heathcote,-36.9161,144.7033,1,1.0,nominatim
+Romania,Transylvania,46.5972,24.3740,1,2.0,nominatim
+Spagna,Isole Canarie,28.2936,-16.6214,1,2.0,nominatim
+Stati Uniti,Dry Creek Valley,38.6500,-122.9500,1,1.0,manuale (centro approssimativo)
+Francia,Sancerre,47.3307,2.8390,1,1.0,nominatim
+Portogallo,Açores,37.8086,-25.4731,1,1.0,nominatim
+Austria,Estiria,47.2500,15.1667,1,1.0,nominatim
+Cina,Yunnan,25.0000,102.0000,1,1.0,nominatim
+Portogallo,Madeira,32.7518,-16.9817,4,4.0,nominatim
+Italia,Emilia Romagna,44.5257,11.0394,4,4.0,nominatim
+Austria,Wagram,48.2960,16.5568,1,1.0,nominatim
+Argentina,Patagonia,-39.0000,-67.5000,2,2.0,manuale (centro approssimativo)
+Italia,Cannonau di Sardegna,40.2568,9.6220,1,1.0,nominatim
+Portogallo,Douro,41.1354,-7.1176,2,2.0,nominatim
+Italia,Lugana,45.4615,10.6228,1,1.0,nominatim
+Argentina,Mendoza,-34.5970,-68.7305,2,2.0,nominatim
+Italia,Oltrepò Pavese,44.9800,9.1000,2,2.0,manuale (centro approssimativo)
+Francia,Gevrey-Chambertin,47.2262,4.9706,1,1.0,nominatim
+Francia,Sud-Ouest,43.7000,0.5000,2,2.0,manuale (centro approssimativo)
+Francia,Pernand-Vergelesses,47.0790,4.8538,1,1.0,nominatim
+Australia,Tasmania,-42.0351,146.6367,1,1.0,nominatim
+Francia,Corsica,42.1881,9.0683,1,1.0,nominatim
+Francia,Coteaux du Loir,47.7000,0.5000,1,1.0,manuale (centro approssimativo)
+Italia,Lazio,41.9802,12.7668,1,1.0,nominatim
+Portogallo,Alentejo,38.0551,-7.8606,1,1.0,nominatim
+Italia,Montefalco Sagrantino,42.8942,12.6532,1,1.0,nominatim
+Austria,Wachau,48.3276,15.4116,2,2.0,nominatim
+Italia,Lambrusco di Sorbara,44.7527,11.0094,1,1.0,nominatim
+Italia,Basilicata,40.5006,16.0820,1,1.0,nominatim
+Cile,Valle de Maipo,-34.0121,-70.1246,1,1.0,nominatim
+Grecia,Santorini,36.4071,25.4567,1,1.0,nominatim
+Slovenia,Vipava,45.8215,13.9800,2,2.0,nominatim
+Francia,Auvergne,45.7100,3.1532,1,1.0,nominatim
+Francia,Pouilly-Fuissé,46.2765,4.7858,1,1.0,nominatim
+Italia,Calabria,39.0566,16.5250,2,2.0,nominatim
+Italia,Tortona,44.8967,8.8641,1,1.0,nominatim
+Spagna,Rueda,41.4130,-4.9598,1,1.0,nominatim
+Sudafrica,Swartland,-33.2936,18.5994,1,1.0,nominatim
+Ungheria,Tokaj,48.1236,21.4114,1,1.0,nominatim
+Italia,Soave,45.4359,11.2425,1,1.0,nominatim
+Germania,Rheinland-Pfalz,49.9532,7.3106,1,1.0,nominatim
+Italia,Barbera d'Asti,44.8524,8.2414,1,1.0,nominatim
+Italia,Bardolino,45.5312,10.6918,1,1.0,nominatim
+Cile,Cachapoal,-36.4614,-71.7286,1,1.0,nominatim
+Germania,Franken,50.0899,11.9227,1,1.0,nominatim

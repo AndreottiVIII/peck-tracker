@@ -1,0 +1,132 @@
+[
+ {
+  "azienda": "Panificio Follador di Follador Antonio",
+  "sito": "https://www.fornofollador.it",
+  "link_shop": "https://www.fornofollador.it/categoria-prodotto/panettone-pandoro/",
+  "prodotti": [
+   "PANETTONE PERE E CIOCCOLATO 800 GR",
+   "PANETTONE TRADIZIONALE 1 KG",
+   "PANETTONE TRADIZIONALE 220 GR",
+   "PANETTONE CIOCCOLATO E ALBICOCCHE 800 GR",
+   "VENEZIANA 800 GR",
+   "PANDORO 1 kg",
+   "PANETTONE 10 Kg",
+   "PANETTONE 2 kg",
+   "PANETTONE 3 KG"
+  ]
+ },
+ {
+  "azienda": "Sapori di Montagna S.r.l.",
+  "sito": "https://funghirossi.it/",
+  "link_shop": "",
+  "prodotti": [
+   "CONFETTURA EXTRA DI LAMPONI 340 g",
+   "CONFETTURA EXTRA DI FICHI 340 g",
+   "MARMELLATA DI MANDARINI 340g",
+   "MARMELLATA DI LIMONI E CEDRI 340 g",
+   "CONFETTURA EXTRA DI MORE 340g"
+  ]
+ },
+ {
+  "azienda": "C & C Express s.a.s. di Paolini Franca & C.",
+  "sito": "https://spezzafumo.it",
+  "link_shop": "",
+  "prodotti": [
+   "Caramelle gelèe al bitter140g",
+   "Caramelle Gelèe al mandarino tardivo di Ciaculli 140g",
+   "Caramelle gelèe allo zafferano 140g",
+   "GELATINE PANETTONE AL RUM 140 G"
+  ]
+ },
+ {
+  "azienda": "Riso Gallo S.p.A.",
+  "sito": "https://www.risogallo.it",
+  "link_shop": "https://www.risogallo.it/collections/all",
+  "prodotti": [
+   "RISO CARNAROLI 1 kg",
+   "RISO CARNAROLI 1 kg"
+  ]
+ },
+ {
+  "azienda": "Casa Iuorio Società Agricola S.S.",
+  "sito": "https://casaiuorio.it",
+  "link_shop": "https://casaiuorio.it/negozio/",
+  "prodotti": [
+   "BROCCOLI DI RAPA VARIETÀ SPIERT IN OLIO EXTRAVERGINE DI OLIVA 200g",
+   "GENOVESE NAPOLETANA 300 g",
+   "ACQUASALE DI \"POMODORO VERNINO\" IN OLIO EXTRAVERGINE DI OLIVA 500 g"
+  ]
+ },
+ {
+  "azienda": "Sevengrams S.r.l. (7gr S.r.l.)",
+  "sito": "https://www.7gr.it",
+  "link_shop": "https://www.7gr.it/negozio/",
+  "prodotti": [
+   "CAFFÈ MONORIGINE BRASILE SANTOS SACCHETTO 250 G (GRANI)",
+   "CAFFÈ 100% ARABICA SACCHETTO 250 G (GRANI)",
+   "CAFFÈ MILANO SACCHETTO 250 G (GRANI)"
+  ]
+ },
+ {
+  "azienda": "Azienda Agrimontana S.p.A.",
+  "sito": "https://www.agrimontana.it",
+  "link_shop": "https://shop.agrimontana.it/it/",
+  "prodotti": [
+   "marrons glacés - 6 PEZZI"
+  ]
+ },
+ {
+  "azienda": "Bottega Pavesi S.r.l.",
+  "sito": "https://www.bottegapavesi.com/",
+  "link_shop": "https://shop.bottegapavesi.com/",
+  "prodotti": [
+   "CAPONATA DI MELANZANE 200 GR"
+  ]
+ },
+ {
+  "azienda": "Ernesto Brusa S.r.l.",
+  "sito": "http://www.ernestobrusa.com",
+  "link_shop": "https://www.ernestobrusa.com/shop/",
+  "prodotti": [
+   "FICO TARTUFATO 100 G",
+   "AMARENA TARTUFATA GR. 80"
+  ]
+ },
+ {
+  "azienda": "Manfredi Barbera & Figli S.p.A.",
+  "sito": "https://oliobarbera.it",
+  "link_shop": "",
+  "prodotti": [
+   "OLIO EXTRAVERGINE DI OLIVA LORENZO 5 500ML"
+  ]
+ },
+ {
+  "azienda": "Salcis Siena 1941 S.r.l. (S.A.L.C.I.S., Società Anonima Lavorazione Carni Insaccati Siena)",
+  "sito": "https://www.salcis.it",
+  "link_shop": "http://www.salcis.it/salcis/index.php?option=com_content&view=category&layout=blog&id=31&Itemid=141&lang=it",
+  "prodotti": [
+   "MONNALISA ALLO ZAFFERANO 0,5 KG (WEB E CONFEZIONI)",
+   "PECORINO AI QUATTRO PEPI 400 GR (WEB E CONFEZIONI)"
+  ]
+ },
+ {
+  "azienda": "Agricola Tre Valli - Società Cooperativa",
+  "sito": "https://www.agricolatrevalli.it",
+  "link_shop": "",
+  "prodotti": [
+   "COTECHINO ALL'ANTICA KG. 1",
+   "ZAMPONE KG 1,3",
+   "COPPA PECK TRANCIO 800g"
+  ]
+ },
+ {
+  "azienda": "Tartuflanghe S.r.l.",
+  "sito": "https://tartuflanghe.com",
+  "link_shop": "https://shop.tartuflanghe.com/",
+  "prodotti": [
+   "CREMA DI PURO TARTUFO BIANCO 40 g",
+   "BURRO CON TARTUFO 30 g",
+   "CREMA AL PARMIGIANO REGGIANO E TARTUFO 180 g"
+  ]
+ }
+]

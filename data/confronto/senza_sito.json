@@ -1,0 +1,266 @@
+[
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Viale S. Francesco 30, Gragnano (NA)",
+  "azienda": "La Fabbrica della Pasta di Gragnano S.r.l.",
+  "certezza": "certa",
+  "prodotti": "SPAGHETTI 500 g; FUSILLONI 500 g; PENNE 500G; BUCATINI 500 g; PACCHERI 500 g; RIGATONI 500 g; PENNE SENZA GLUTINE 500 G; SPAGHETTI SENZA GLUTINE 500 G; LINGUINE 500 g",
+  "nota": "Il registro aziende.it riporta come sede legale Viale San Francesco 30, 80054 Gragnano. Sito ufficiale non trovato (provato lafabbricadellapasta.it, non raggiungibile). Fa anche linea senza glutine, coerente con i prodotti Peck. Possibile conto terzi per marchio Peck."
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Sforza Gallo 12, Calizzano (SV)",
+  "azienda": "Santamaria di Federico Santamaria",
+  "certezza": "certa",
+  "prodotti": "FUNGHI PORCINI SECCHI EXTRA 50 g; FUNGHI PORCINI IN OLIO EXTRA VERGINE DI OLIVA 190 g",
+  "nota": "L'elenco imprese riporta Via Sforza Gallo 12, 17057 Calizzano per Santamaria di Federico Santamaria, 'lavorazione artigianale funghi e conserve'. Coerente con funghi porcini secchi e in olio. Sito proprio non trovato (ricerca esaurita). Calizzano ha anche Barberis Funghi snc, ma non e' risultato a q"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Via IV Novembre 15, Borgo San Martino (AL)",
+  "azienda": "Panetteria Pasticceria Moretto di Marzolla Gabriella e C. s.n.c.",
+  "certezza": "probabile",
+  "prodotti": "BACI DI DAMA 150 G; KRUMIRI 200 G",
+  "nota": "Piu' elenchi collocano a Via IV Novembre 15 la Panetteria Pasticceria Moretto, e un rivenditore dice che i baci di dama del Panificio Moretto di Borgo San Martino sono il prodotto simbolo dal 1970. Non ho trovato conferma dei krumiri. L'intestatario legale e' incerto: negli elenchi compaiono Moretto"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Barsanti 3, Sorbara (MO)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "ACETO BALSAMICO DI MODENA IGP * 100 ML (FUXIA); ACETO BALSAMICO DI MODENA IGP ** 250 ml; ACETO BALSAMICO DI MODENA IGP * 25 cl",
+  "nota": "Provato: ricerca dell'indirizzo esatto con 'aceto balsamico' e 'Sorbara/Bomporto': nessuna pagina collega via Barsanti 3 a un'azienda. Compaiono solo acetaie della zona (Due Vittorie, Villa Paltrinieri) senza indirizzo corrispondente: non le attribuisco. Da cercare nell'elenco del Consorzio Aceto Ba"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Santo Stefano 20, Cerignola (FG)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "OLIVE VERDI \"BELLA DI CERIGNOLA GGG 290 G",
+  "nota": "Provato: ricerca dell'indirizzo con 'olive Bella di Cerignola': nessun riscontro. Altri confezionatori di Cerignola trovati hanno indirizzi diversi (La Bella Cerignola Soc. Coop. in Strada Vicinale San Leonardo 16; Le Conserve Daune in zona industriale PAP): non attribuibili. Da cercare nell'elenco "
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Via Arese 11, Milano",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "CONDIMENTO AROMATIZZATO AL TARTUFO BIANCO 25 cl; CREMA DI PURO TARTUFO BIANCO 40 g",
+  "nota": "Provato: 'Via Arese 11' / 'Via Francesco Arese 11' Milano con tartufo bianco, crema, condimento: nessun risultato, la pagina stradale di Tuttocitta non elenca attivita'. Indirizzo non ricondotto a nessuna azienda (la via esiste a Milano). Da cercare con una visura per indirizzo. Secondo giro: provat"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Lindenweg 14, Altheim",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "CREMA ALLA NOCCIOLA 200 G; CREMA CIOCCOLATO E ARANCIA 200 G",
+  "nota": "Provato: '88499 Altheim' 'Lindenweg 14' con Nusscreme: nessun risultato. Altheim (88499) e' nel distretto di Biberach, Baden-Wuerttemberg (c'e' anche un Altheim in Baviera/Austria, da non confondere). Nessuna azienda collegata all'indirizzo: da cercare nel Handelsregister o con Impressum di cremespa"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Contrada Cerro, Capaccio Paestum (SA)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "CARCIOFINI GRIGLIATI IN OLIO EXTRA VERGINE DI OLIVA 340 g",
+  "nota": "Cercato 'Contrada Cerro' Capaccio con carciofini/conserve sott'olio: nessuna azienda di conserve trovata. Compaiono solo due caseifici a Contrada Cerro Ponte Barizzo (Angiolillo, Di Lascio), che non c'entrano con i carciofini. Indirizzo senza numero civico. Nell'elenco UE (TRACES) in Via Cerro, Capa"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Colli Verdi (PV)",
+  "azienda": "Casa Zuffada Societa' Agricola S.r.l.",
+  "certezza": "certa",
+  "prodotti": "140° PECK METODO CLASSICO PAS DOSÈ 2019 PECK",
+  "nota": "Peck nomina direttamente l'azienda. Agriturismo Casa Zuffada a Colli Verdi (Oltrepo' Pavese, ~600 m); la societa' compare anche su registroaziende.it a Colli Verdi (PV). Sito ufficiale non trovato; non risulta vendita online propria. Non verificato chi produca davvero lo spumante: puo' essere vinifi"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Volterrana 207, San Casciano V.P (Firenze)",
+  "azienda": "Fattoria I Tattoli (famiglia Bini Smaghi)",
+  "certezza": "certa",
+  "prodotti": "OLIO EXTRAVERGINE DI OLIVA \"I TATTOLI\" CHIANTI CLASSICO DOP 500 ML; OLIO EXTRAVERGINE DI OLIVA CHIANTI CLASSICO DOP 25 cl",
+  "nota": "Gambero Rosso (Oli d'Italia) elenca 'I Tattoli, via Volterrana 207, San Casciano in Val di Pesa'; proprieta' Bini Smaghi, olio Chianti Classico DOP. Forma giuridica e sito ufficiale non trovati (pagina Gambero non apribile, dati letti dal riassunto della ricerca). Venduto da rivenditori esteri (Olio"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Via Pellegrini 4, Borgomanaro (IM)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "OLIVE TAGGIASCA SNOCCIOLATE IN OLIO EVO 180 g",
+  "nota": "Il comune e' molto probabilmente Borgomaro (IM), non Borgomanero (NO). Nessuna azienda trovata in via Pellegrini a Borgomaro (solo un annuncio immobiliare). Cercata anche per olive taggiasche; esaurito il limite di ricerche web. Secondo giro: provate 'Via Pellegrini' + 18021 Borgomaro + srl. Via Pel"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Regina Elena 22, Campobello di Mazara (TP)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "OLIO EXTRA VERGINE DI OLIVA NOCELLARA 50 cl",
+  "nota": "Nessuna fonte per 'via Regina Elena 22' a Campobello di Mazara. Produttori di Nocellara della zona visti ma non collegabili all'indirizzo: Barbera Calogero, Tunnaliva (via Volta), Mangiaracina (via Volta 5). Nessun nome indovinato. Secondo giro: provate varianti con CAP 91021, frantoio/oleificio/srl"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Castellina in Chianti (SI)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "OLIO EXTRA VERGINE DI OLIVA CHIANTI CLASSICO DOP 500 ml",
+  "nota": "La frase di Peck riporta solo il numero CCIAA 32245/97/SI (registro degli imbottigliatori), senza nome: la ricerca per numero non ha dato nulla. A Castellina c'e' per esempio Fattoria La Castellina (via Ferruccio 26) ma non c'e' alcuna prova che sia lei: non attribuito. Secondo giro: nessun nuovo te"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via Cosmo Mollica Alagona 65, Catania",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "BISCOTTII CIOCCOLATO E SALE 110 g",
+  "nota": "Non trovata. Provate ricerche con l'indirizzo esatto (biscotti, pasticceria, laboratorio Catania): nessuna pagina riporta l'indirizzo. Peck non nomina il produttore. Il limite di ricerche web si e' esaurito prima di poter provare altre vie (registri camerali). Secondo giro: provate 'Via Cosmo Mollic"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Oliveto di Olivastri, Chiusavecchia (IM)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "OLIVE TAGGIASCA SNOCCIOLATE IN OLIO EVO 180 g",
+  "nota": "Non trovata. 'Oliveto di Olivastri' non compare come azienda in nessuna fonte trovata (Olivastri e' una frazione di Chiusavecchia). L'elenco reteimprese di Chiusavecchia mostra frantoi e aziende agricole (Merano, Amoretti, Anfosso, Ramoino, Il Colletto...) ma nessuna fonte li lega a questo confezion"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Via Barco 35, Isola Vicentina (VI)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "RADICCHIO ROSSO TARDIVO SOTT'OLIO 330 g",
+  "nota": "Non trovata. Le ricerche con indirizzo esatto e radicchio tardivo sott'olio non danno alcuna azienda in via Barco a Isola Vicentina. Il radicchio tardivo e' tipico di Treviso/Padova/Venezia, quindi potrebbe trattarsi di un confezionatore conto terzi. Non attribuito. Secondo giro: Via Barco esiste a "
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "Regione Abba n.15, Olivola (AL)",
+  "azienda": "Azienda Agricola Oliviera (titolare Anita Casamento)",
+  "certezza": "probabile",
+  "prodotti": "OLIO EXTRAVERGINE DI OLIVA L'UNICO 500 ML (PIEMONTE)",
+  "nota": "Fonte giornalistica: Azienda Agricola Oliviera a Olivola (AL), olio 'Unico' premiato dalla guida Bibenda; nessuna fonte con l'indirizzo Regione Abba. Sito ufficiale non trovato (oliviera.it e' un'altra azienda, in Chianti). Un elenco indicherebbe aziende agricole in Via Abba 12, Olivola (non verific"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "via della Parrocchia 20, San Feliciano (PG)",
+  "azienda": "Frantoi Oleari Italiani S.r.l. (P.IVA 01996350516)",
+  "certezza": "probabile",
+  "prodotti": "OLIO EXTRA VERGINE DI OLIVA MONTE SUL LAGO",
+  "nota": "Atoka riporta Frantoi Oleari Italiani S.r.l., sede legale in Via della Parrocchia 20, 06063 San Feliciano, Magione (PG), P.IVA 01996350516: stesso indirizzo scritto da Peck ('Confezionato in'). L'oggetto sociale comprende molitura, produzione, imbottigliamento e confezionamento di olio d'oliva (ATEC"
+ },
+ {
+  "tipo_chiave": "indirizzo",
+  "chiave": "zona Industriale snc, Senise (PZ)",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "PEPERONE CRUSCO 20 G",
+  "nota": "Non trovata. Gli elenchi di Senise (reteimprese) non mostrano aziende di peperoni nella zona industriale; nessuna fonte con l'indirizzo. La fonte giusta sarebbe l'elenco operatori del Consorzio del Peperone di Senise IGP (non consultato). Secondo giro: provate 85038 Senise + zona industriale + srl +"
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT X2M8D CE",
+  "azienda": "Colla S.p.A.",
+  "certezza": "certa",
+  "prodotti": "PARMIGIANO REGGIANO DOP STAGIONATO MINIMO 24 MESI 500g; PARMIGIANO REGGIANO DOP VACCA BIANCA",
+  "nota": "Elenco UE stabilimenti riconosciuti (TRACES): approvazione IT X2M8D = Colla S.p.A., Via San Michele Campagna 24, 43036 Fidenza (PR), sezioni latte e derivati e attivita' generale. Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT X2MBD CE",
+  "azienda": "Colla S.p.A.",
+  "certezza": "probabile",
+  "prodotti": "PARMIGIANO REGGIANO DOP STAGIONATO MINIMO 24 MESI 1 kg; PARMIGIANO REGGIANO DOP STAGIONATO MINIMO 24 MESI 2 KG",
+  "nota": "Il codice IT X2MBD non esiste negli elenchi UE; IT X2M8D e' Colla S.p.A. (Fidenza) ed e' il codice scritto da Peck sui Parmigiani da 500 g e Vacca Bianca. Probabile refuso 8/B, ma non c'e' una fonte che lo dimostri. Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 05 109 CE",
+  "azienda": "CA.FORM S.p.A.",
+  "certezza": "certa",
+  "prodotti": "PECORINO SARDO MATURO DOP MEDORO 650 G; BAGOSS DI BAGOLINO 0.5 KG (WEB E CONFEZIONI); MONTASIO DOP STAGIONATO 1 KG",
+  "nota": "Elenco UE (TRACES): approvazione IT 05 109 = CA.FORM SPA, Via Marosticana 81/97, 36031 Dueville (VI), latte e derivati. Sulle schede Peck il bollo e' per 'confezionato in': probabile stagionatore/confezionatore di formaggi di altri produttori (Pecorino sardo Medoro, Bagoss, Montasio). Sito e shop no"
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 9 2028 L CE",
+  "azienda": "Salumi Migliorati di Migliorati R. e C. S.a.s.",
+  "certezza": "certa",
+  "prodotti": "SALAMETTO PECK 350 g; SALAMETTI MIGNON PECK 550 g",
+  "nota": "Elenco UE (TRACES): approvazione IT 9 2028 L = Salumi Migliorati di Migliorati R. e C. SAS, Via Gerrone loc. S. Benedetto, 26010 Crema (CR). Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT Y2S5E CE",
+  "azienda": "Artigianquality S.r.l.",
+  "certezza": "certa",
+  "prodotti": "MORTADELLA MINI 0.7 KG (WEB E CONFEZIONI); MORTADELLA MINI AL TARTUFO 0.7 KG (WEB E CONFEZIONI)",
+  "nota": "Elenco UE (TRACES): approvazione IT Y2S5E = Artigianquality S.r.l., Via Tranquillo Cremona 29, 40100 Bologna, prodotti a base di carne. Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 1133 CE",
+  "azienda": "COAM Industrie Alimentari S.p.A.",
+  "certezza": "certa",
+  "prodotti": "CUORE DI FILETTO DI SALMONE 170 GR; SALMONE AFFUMICATO ALLEVATO ORCADI ASSE E COLTELLO",
+  "nota": "Elenco UE (TRACES): approvazione IT 1133 = COAM Industrie Alimentari SpA, Via Stelvio 286, 23017 Morbegno (SO), prodotti della pesca (esiste anche un '1133 S' di un'altra azienda, non pertinente). Stessa zona industriale di Alpes S.r.l. (via Stelvio, bollo IT 2988). Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 586 L CE",
+  "azienda": "F.lli Galloni S.p.A.",
+  "certezza": "certa",
+  "prodotti": "PROSCIUTTO CRUDO STAGIONATO TRANCIO GR 800 (WEB E CONFEZIONI)",
+  "nota": "Elenco UE (TRACES): approvazione IT 586 L = F.lli Galloni S.p.A., Via Martiri della Liberta' 17, 43013 Langhirano (PR). E' la stessa azienda dell'indirizzo Via Roma 84, Langhirano scritto da Peck per lo stesso prosciutto (sede e stabilimento 1 di Galloni secondo i siti dell'azienda e del Consorzio d"
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 9-3382/L CE",
+  "azienda": "Sapori di Montagna S.r.l.",
+  "certezza": "certa",
+  "prodotti": "RAGÙ AL CINGHIALE 180 g; RAGÙ AL CERVO 180 g",
+  "nota": "Elenco UE (TRACES): approvazione IT 9 3382 L = Sapori di Montagna S.r.l., via dei Napoleoni, Morbegno (SO): lo stesso stabilimento delle confetture di Via dei Napoleoni 13 (vedi riga indirizzo). Ragu' di cinghiale e cervo."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "CE IT B0170",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "CUORE DI FILETTO DI SALMONE 170 GR",
+  "nota": "Codice assente dagli elenchi UE scaricati (sezioni alimentari di origine animale, Italia e Spagna). Non cercato online (limite di ricerche web esaurito). Il salmone ha anche IT 1133 CE (COAM, Morbegno): B0170 potrebbe essere un confezionatore o un deposito, non verificato. Secondo giro: ricerca web "
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT B0170 CS CE",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "SALMONE AFFUMICATO ALLEVATO 200 GR",
+  "nota": "Codice assente dagli elenchi UE scaricati; stessa radice di CE IT B0170 con CS dopo. Non verificato. Secondo giro: vedi nota di 'CE IT B0170': nessun risultato ne' negli elenchi UE scaricati ne' sul web."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "ES 12.03487/S CE",
+  "azienda": "Conservera Castreña, S.A.",
+  "certezza": "certa",
+  "prodotti": "FILETTI DI ACCIUGHE DEL MAR CANTABRICO PECK 78 G",
+  "nota": "Elenco UE (TRACES): approvazione ES 12.03487/S = Conservera Castreña SA, Polígono Industrial Vallegón, módulo A nº 1-3, 39709 Sámano (Castro Urdiales, Cantabria), prodotti della pesca: acciughe del Cantabrico. Sito e shop non verificati."
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT 2988 CE",
+  "azienda": "Alpes S.r.l.",
+  "certezza": "certa",
+  "prodotti": "PEPERONCINI FARCITI CON CAPPERI E ACCIUGHE 200 g",
+  "nota": "Elenco UE (TRACES): approvazione IT 2988 = Alpes S.r.l., Viale Stelvio, 23017 Morbegno (SO), prodotti della pesca: lo stesso luogo (Viale Stelvio 234) che Peck scrive per questi peperoncini farciti. alpes.it risponde con blocco anti-bot: sito e shop non verificati. Alpes vende con il proprio marchio"
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT CN 9744",
+  "azienda": "",
+  "certezza": "non trovata",
+  "prodotti": "CANELLI DOCG MOSCATO 2025 PECK",
+  "nota": "Non e' un bollo CE: 'Imbottigliato da: IT CN 9744' ha il formato dei codici degli imbottigliatori di vino (sigla provincia CN = Cuneo + numero), come TV 1000 di Peck; nessun elenco scaricato lo contiene e il registro degli imbottigliatori non e' stato consultato. Secondo giro: cercato 'IT CN 9744' c"
+ },
+ {
+  "tipo_chiave": "bollo_ce",
+  "chiave": "IT Y9Y4L",
+  "azienda": "Mediterranea Conserve Alimentari S.r.l.",
+  "certezza": "certa",
+  "prodotti": "BOTTARGA DI MUGGINE GRATTUGIATA 100 g",
+  "nota": "Elenco UE (TRACES): approvazione Y9Y4L = Mediterranea Conserve Alimentari S.r.l., Pill'e Matta, Strada A lotto 28, 09044 Quartucciu (CA), prodotti della pesca. Bottarga di muggine grattugiata. Sito e shop non verificati."
+ }
+]

@@ -1,0 +1,113 @@
+[
+ {
+  "azienda": "Antico Pastificio Rosetano S.r.l.",
+  "sito": "https://verrigni.com/",
+  "link_shop": "https://www.verrignishop.it/it/shop",
+  "prodotti": [
+   "SPAGHETTI 500 g",
+   "FUSILLONI 500 g",
+   "PENNE 500G",
+   "BUCATINI 500 g",
+   "PACCHERI 500 g",
+   "RIGATONI 500 g",
+   "LINGUINE 500 g"
+  ]
+ },
+ {
+  "azienda": "Ca' del Bosco S.r.l. Societa' Agricola",
+  "sito": "https://www.cadelbosco.com",
+  "link_shop": "https://www.cadelbosco.com/it/acquista-edizione-limitata/",
+  "prodotti": [
+   "FRANCIACORTA CUVÉE PRESTIGE EDIZIONE PECK CA' DEL BOSCO"
+  ]
+ },
+ {
+  "azienda": "A Ricchigia S.r.l.",
+  "sito": "https://www.aricchigia.com",
+  "link_shop": "https://www.aricchigia.com/negozio/",
+  "prodotti": [
+   "CREMA AL PISTACCHIO G. 190",
+   "CREMA ALLA MANDORLA G. 190"
+  ]
+ },
+ {
+  "azienda": "Dethlefsen & Balk GmbH",
+  "sito": "https://www.dethlefsen-balk.de",
+  "link_shop": "",
+  "prodotti": [
+   "TE NERO PLEASURE FOREST (AROMATIZZATO AL PISTACCHIO) 100 G",
+   "TÈ WHITE MONKEY SACCHETTO 100 G",
+   "TÈ PECK LOVELY CHRISTMAS 100 G"
+  ]
+ },
+ {
+  "azienda": "Marabissi S.r.l. (P.IVA 01321030528)",
+  "sito": "https://www.marabissi.it",
+  "link_shop": "",
+  "prodotti": [
+   "AMARETTI ALLE MANDORLE",
+   "BISCOTTI CANNELLA, CIOCCOLATO E ARANCIO 110G",
+   "BISCOTTII CIOCCOLATO E SALE 110 g",
+   "BISCOTTI AL CARAMELLO SALATO 110G",
+   "PANFORTE 250 G"
+  ]
+ },
+ {
+  "azienda": "Pasta L'Antica Madia S.r.l.",
+  "sito": "https://anticamadia.com",
+  "link_shop": "https://anticamadia.com/",
+  "prodotti": [
+   "TAGLIATELLE ALL'UOVO 500 g",
+   "TAGLIOLINI ALL'UOVO 500 g"
+  ]
+ },
+ {
+  "azienda": "F.lli Galloni S.p.A.",
+  "sito": "https://www.galloniprosciutto.it",
+  "link_shop": "",
+  "prodotti": [
+   "PROSCIUTTO CRUDO STAGIONATO TRANCIO GR 800 (WEB E CONFEZIONI)"
+  ]
+ },
+ {
+  "azienda": "Marchetti Lab S.r.l.",
+  "sito": "https://www.albertomarchetti.it",
+  "link_shop": "https://www.albertomarchetti.it/bottega-online/",
+  "prodotti": [
+   "ZABAIONE AL MOSCATO D'ASTI 200 GR",
+   "ZABAIONE MARSALA AMBRA 2004 200 GR"
+  ]
+ },
+ {
+  "azienda": "Inaudi Clemente & C. S.r.l.",
+  "sito": "https://www.inaudi.com/",
+  "link_shop": "https://www.inaudi.com/categoria-prodotto/in-evidenza/",
+  "prodotti": [
+   "SALSA DI FUNGHI PORCINI 180 g"
+  ]
+ },
+ {
+  "azienda": "Stringhetto S.r.l. (P.IVA 03678600234)",
+  "sito": "https://www.stringhetto.com/it",
+  "link_shop": "https://www.stringhetto.com/it/giardiniera-in-agrodolce",
+  "prodotti": [
+   "GIARDINIERA PECK 580 ML"
+  ]
+ },
+ {
+  "azienda": "Societa' Agricola F.lli Pinna Societa' Semplice",
+  "sito": "https://www.oliopinna.it",
+  "link_shop": "https://www.oliopinna.it/negozio/",
+  "prodotti": [
+   "OLIO EXTRAVERGINE DI OLIVA MACCIA D'AGLIASTRU"
+  ]
+ },
+ {
+  "azienda": "Il Boscasso Società Agricola",
+  "sito": "https://www.ilboscasso.it",
+  "link_shop": "",
+  "prodotti": [
+   "TOMETTA DI CAPRA A CROSTA NATURALE 0.6 KG (WEB E CONFEZIONI)"
+  ]
+ }
+]

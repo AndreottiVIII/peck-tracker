@@ -1,0 +1,7 @@
+data/raw/
+__pycache__/
+*.pyc
+docs/personale.js
+archivio/
+data/locale/
+docs/personale-logo.png
