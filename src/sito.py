@@ -9,7 +9,7 @@ le pagine generate e le riscrive da zero. Non scarica nulla. Nelle pagine finisc
 web (URL) delle foto, mai le foto: le foto restano sui server di Peck e di Winerim.
 
 Ogni pagina ha un indirizzo vero (una cartella con dentro index.html), con link relativi, cosi'
-funziona sia su https://andreottiviii.github.io/peck-tracker/ sia alla radice di un server locale:
+funziona sia su https://davidecaniatti.com/peck-tracker/ sia alla radice di un server locale:
 
     docs/index.html                       home (e' la Dispensa)
     docs/dispensa/                        elenco dei prodotti, con filtri
@@ -56,7 +56,7 @@ RAW = DATI / "raw"
 DOCS = RADICE / "docs"
 
 REPO = "https://github.com/AndreottiVIII/peck-tracker"
-URL_SITO = "https://andreottiviii.github.io/peck-tracker/"
+URL_SITO = "https://davidecaniatti.com/peck-tracker/"
 PREFISSO_SITO = "/peck-tracker/"   # solo per la pagina 404, che GitHub serve da qualsiasi percorso
 FOTO_PECK_HOST = "https://shop.peck.it/"             # lo shop vecchio (spento il 12/11/2026): le sue foto non caricano piu'
 FOTO_PECK_HOSTS = ("https://peck.it/",)               # le foto del nuovo shop (peck.it/shop); quelle di shop.peck.it non caricano piu'
